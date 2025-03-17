@@ -1,14 +1,17 @@
-# Store the latest state of both controllers
-controller_states = {
-    'left': {'position': None, 'rotation': None, 'buttons': None, 'axes': None},
-    'right': {'position': None, 'rotation': None, 'buttons': None, 'axes': None}
-}
+import json
 
 
 async def process_message(message):
     """
     Process the received message and update controller states.
     """
+
+    # Store the latest state of both controllers
+    controller_states = {
+        'left': {'position': None, 'rotation': None, 'buttons': None, 'axes': None},
+        'right': {'position': None, 'rotation': None, 'buttons': None, 'axes': None}
+    }
+
     try:
         data = json.loads(message)
         

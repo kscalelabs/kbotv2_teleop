@@ -1,42 +1,87 @@
 import asyncio
 import websockets
+import time
 import json
-import logging
 from .vr_cont import process_message
+from .utils import setup_logger
+from .robot_cont import enable_actuators, disable_actuators
+from .actuator_list import ACTUATOR_LIST_SIM, ACTUATOR_LIST_REAL
 
 
-async def handle_connection(websocket):
+logger = setup_logger(__name__)
+
+async def control_loop(websocket, real_robot, kos_instance):
     """Handle incoming WebSocket connections."""
+    actuator_list = ACTUATOR_LIST_REAL if real_robot else ACTUATOR_LIST_SIM
+
+    await kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
+
+    await disable_actuators(kos_instance, actuator_list)
+    await enable_actuators(kos_instance, actuator_list)
+
     try:
         async for message in websocket:
-            logging.info("Received connection")
+            logger.info("Received connection")
             
             # Process the message
-            response = await process_message(message)
+            end_eff_locs = await process_message(message)
+
+            await control_loop(kos_instance, actuator_list, end_eff_locs)
             
             # Send response back
-            await websocket.send(response)
-            logging.info(f"Sent response: {response}")
+            await websocket.send(json.dumps({"status": "success"}))
             
     except websockets.exceptions.ConnectionClosed:
-        logging.info("Client disconnected")
+        logger.info("Client disconnected")
+        await disable_actuators(kos_instance, actuator_list)
     except Exception as e:
-        logging.error(f"Error handling connection: {e}")
+        logger.error(f"Error handling connection: {e}")
+        await disable_actuators(kos_instance, actuator_list)
+
+
+    await disable_actuators(kos_instance, actuator_list)
+
+
+async def kbot_control_loop(kos_instance, actuator_list, end_eff_locs, duration=100):
+    start_time = time.time()
+    next_time = start_time + 1 / 100  # 100Hz control rate
+
+    while time.time() - start_time < duration:
+        current_time = time.time()
+
+        #* ---- Main ---- *
+        # Add your control logic here
+        state_response = await kos_instance.actuator.get_actuators_state(actuator_list.keys())
+        current_joint_states = [state.position for state in state_response.states]
+
+        print(current_joint_states)
+        # next_joint_states = inverse_kinematics(arm_chain, end_eff_locs)
+
+        planned_commands = motion_planning(current_joint_states, next_joint_states)
+
+        command_tasks = []
+        command_tasks.append(kos_instance.actuator.command_actuators(planned_commands))
+
+
+        #* ---- End ---- *
+
+        if next_time > current_time:
+            await asyncio.sleep(next_time - current_time)
+        next_time += 1 / 100
+
 
 
 async def main():
     """Start the WebSocket server."""
     server = await websockets.serve(
-        handle_connection,
+        control_loop,
         "localhost",
         8586
     )
-    logging.info("WebSocket server started on ws://localhost:8586")
+    logger.info("WebSocket server started on ws://localhost:8586")
     
     await server.wait_closed()
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
 

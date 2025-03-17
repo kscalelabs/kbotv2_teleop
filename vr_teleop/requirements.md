@@ -9,8 +9,8 @@
 
 2. **Robot Control**
    - Convert to joint commands via PyBullet IK
-   - Button press for different pre-config hand grasps. Start with open/close
    - Smooth trajectories with motion planning
+   - Button press to control hand for different pre-config hand grasps. Start with open/close
     
     https://github.com/kscalelabs/teleop-old
     https://github.com/tonyzhaozh/aloha/blob/main/aloha_scripts/one_side_teleop.py
@@ -22,10 +22,15 @@
    https://github.com/kscalelabs/kbot-unit-tests/tree/cycle-test
 
 4. **Data**
-   - Store as protobuf or DataClass w/ JSON
+   - Store as HDF5
    - Enable motion replay
-   - Protobuff should have: XML used, robot used. 
 
-   https://github.com/kscalelabs/skillit/blob/master/skillit/record/recorder.py
+    https://github.com/tonyzhaozh/aloha/blob/main/aloha_scripts/record_episodes.py
+    https://github.com/kscalelabs/skillit/blob/master/skillit/record/recorder.py
 
+
+*decisions*
+
+- robot client only accepts one instance of kos. Would be running in sim and real sequentially rather than same time. This is because have had issues (in kbot unit test) with latency when running sim w/ render and real at same time/
+- 
 
