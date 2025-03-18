@@ -8,22 +8,22 @@
 
 
 2. **Robot Control**
-   - Convert to joint commands via PyBullet IK
-   - Smooth trajectories with motion planning
+   - Convert to joint commands via PyBullet IK.
    - Button press to control hand for different pre-config hand grasps. Start with open/close
     
+    https://github.com/bulletphysics/bullet3/blob/master/examples/pybullet/examples/inverse_kinematics_husky_kuka.py#L67
     https://github.com/kscalelabs/teleop-old
-    https://github.com/tonyzhaozh/aloha/blob/main/aloha_scripts/one_side_teleop.py
-    https://github.com/kscalelabs/kbot-unit-tests/blob/cycle-test/kbot_cycle_tests/motion_planning_primitive.py
 
 3. **Execution**
    - Run on KOS-Sim and real robot, like kbot-unit test
+   - Smooth trajectories
    
-   https://github.com/kscalelabs/kbot-unit-tests/tree/cycle-test
+    https://github.com/kscalelabs/kbot-unit-tests/tree/cycle-test
+    https://github.com/kscalelabs/kbot-unit-tests/blob/cycle-test/kbot_cycle_tests/motion_planning_primitive.py
 
 4. **Data**
-   - Store as HDF5
-   - Enable motion replay
+   - Store as HDF5. Integrating video from KOS when that is ready
+   - Enable motion replay with smooth motion planning
 
     https://github.com/tonyzhaozh/aloha/blob/main/aloha_scripts/record_episodes.py
     https://github.com/kscalelabs/skillit/blob/master/skillit/record/recorder.py

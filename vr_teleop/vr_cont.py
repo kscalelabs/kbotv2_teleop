@@ -1,5 +1,8 @@
 import json
 
+from .utils.logging import setup_logger
+logger = setup_logger(__name__)
+
 
 async def process_message(message):
     """
@@ -27,18 +30,18 @@ async def process_message(message):
                     controller_states[controller][field] = data[field]
             
             # Log combined state of both controllers
-            logging.warn(f"Controllers - Left: [pos:{controller_states['left']['position']}, "
-                        f"\nrot:{controller_states['left']['rotation']}, "
-                        f"\nbtn:{controller_states['left']['buttons']}, "
-                        f"\naxes:{controller_states['left']['axes']}] | "
-                        f"\n\nRight: [pos:{controller_states['right']['position']}, "
-                        f"\nrot:{controller_states['right']['rotation']}, "
-                        f"\nbtn:{controller_states['right']['buttons']}, "
-                        f"\naxes:{controller_states['right']['axes']}]")
+            # logger.warn(f"Controllers - Left: [pos:{controller_states['left']['position']}, "
+            #             f"\nrot:{controller_states['left']['rotation']}, "
+            #             f"\nbtn:{controller_states['left']['buttons']}, "
+            #             f"\naxes:{controller_states['left']['axes']}] | "
+            #             f"\n\nRight: [pos:{controller_states['right']['position']}, "
+            #             f"\nrot:{controller_states['right']['rotation']}, "
+            #             f"\nbtn:{controller_states['right']['buttons']}, "
+            #             f"\naxes:{controller_states['right']['axes']}]")
             
             return json.dumps({"status": "success"})
     except json.JSONDecodeError as e:
-        logging.error(f"Failed to parse JSON: {e}")
+        logger.error(f"Failed to parse JSON: {e}")
     except Exception as e:
-        logging.error(f"Error processing message: {e}")
+        logger.error(f"Error processing message: {e}")
 

@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 import logging
 from pykos import KOS
-from .actuator_list import ACTUATOR_LIST_SIM
+from ..actuator_list import ACTUATOR_LIST_SIM
 
 logger = logging.getLogger(__name__)
 

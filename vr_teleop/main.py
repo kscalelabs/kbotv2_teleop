@@ -1,16 +1,17 @@
 import asyncio
+from pykos import KOS
 import websockets
 import time
 import json
 from .vr_cont import process_message
-from .utils import setup_logger
+from .utils.logging import setup_logger
 from .robot_cont import enable_actuators, disable_actuators
 from .actuator_list import ACTUATOR_LIST_SIM, ACTUATOR_LIST_REAL
 
 
 logger = setup_logger(__name__)
 
-async def control_loop(websocket, real_robot, kos_instance):
+async def control_loop(websocket, kos_instance: KOS, real_robot: bool):
     """Handle incoming WebSocket connections."""
     actuator_list = ACTUATOR_LIST_REAL if real_robot else ACTUATOR_LIST_SIM
 
@@ -24,9 +25,10 @@ async def control_loop(websocket, real_robot, kos_instance):
             logger.info("Received connection")
             
             # Process the message
-            end_eff_locs = await process_message(message)
+            # end_eff_locs = await process_message(message)
+            end_eff_locs = [0]
 
-            await control_loop(kos_instance, actuator_list, end_eff_locs)
+            await kbot_control_loop(kos_instance, actuator_list, end_eff_locs)
             
             # Send response back
             await websocket.send(json.dumps({"status": "success"}))
@@ -54,13 +56,12 @@ async def kbot_control_loop(kos_instance, actuator_list, end_eff_locs, duration=
         state_response = await kos_instance.actuator.get_actuators_state(actuator_list.keys())
         current_joint_states = [state.position for state in state_response.states]
 
-        print(current_joint_states)
-        # next_joint_states = inverse_kinematics(arm_chain, end_eff_locs)
+        # next_joint_states = inverse_kinematics(arm_chain, current_joint_states, end_eff_locs)
 
-        planned_commands = motion_planning(current_joint_states, next_joint_states)
+        # planned_commands = motion_planning(current_joint_states, next_joint_states)
 
-        command_tasks = []
-        command_tasks.append(kos_instance.actuator.command_actuators(planned_commands))
+        # command_tasks = []
+        # command_tasks.append(kos_instance.actuator.command_actuators(planned_commands))
 
 
         #* ---- End ---- *
@@ -70,11 +71,18 @@ async def kbot_control_loop(kos_instance, actuator_list, end_eff_locs, duration=
         next_time += 1 / 100
 
 
+async def handle_connection(websocket):
+    """Handle incoming WebSocket connections."""
+
+    async with KOS(ip="localhost", port=50051) as sim_kos:
+        await control_loop(websocket, sim_kos, False)
+
+
 
 async def main():
     """Start the WebSocket server."""
     server = await websockets.serve(
-        control_loop,
+        handle_connection,
         "localhost",
         8586
     )

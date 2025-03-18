@@ -1,7 +1,7 @@
 from pykos import KOS
 import asyncio
 import time
-from .utils import setup_logger
+from .utils.logging import setup_logger
 logger = setup_logger(__name__)
 
 async def enable_actuators(kos_instance, actuator_list):
