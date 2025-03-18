@@ -131,6 +131,7 @@
                   <inertial pos="0.002571 0.000004 0.040871" mass="0.571799" diaginertia="0.00075 0.00072 0.000581" />
                   <geom name="KB_C_501X_Bayonet_Adapter_Hard_Stop_2_collision" type="mesh" mesh="KB_C_501X_Bayonet_Adapter_Hard_Stop_2.collision.stl" class="collision" />
                   <geom name="KB_C_501X_Bayonet_Adapter_Hard_Stop_2_visual" material="KB_C_501X_Bayonet_Adapter_Hard_Stop_material" type="mesh" mesh="KB_C_501X_Bayonet_Adapter_Hard_Stop_2.stl" class="visual" />
+                  <geom name="left_wrist_visual_marker" type="sphere" size="0.04" rgba="1 0 0 1" pos="0 0 0.05" contype="0" conaffinity="0" group="2" />
                 </body>
               </body>
             </body>

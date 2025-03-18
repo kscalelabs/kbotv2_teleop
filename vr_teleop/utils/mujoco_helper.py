@@ -62,6 +62,9 @@ def get_joints(model, data, leftside: bool):
 
 
 def slice_dofs(model, data, input_list, leftside: bool):
+    if len(input_list.shape) == 1:
+        input_list = input_list.reshape(1, -1)
+
     if leftside:
         tjoints = [
             "left_shoulder_pitch_03",

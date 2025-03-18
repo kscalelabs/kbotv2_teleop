@@ -20,7 +20,7 @@ mujoco.mj_step(model, data)
 
 #* Mock Example End Point the arm should go to: TEST
 ansqpos = move_joints(model, data, [0.3, -0.5, pi*(3/2), -2, 0.5], leftside=True)
-data.qpos = ansqpos
+data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
 
@@ -39,12 +39,12 @@ def forward_kinematics(joint_anlges, leftside: bool):
     mujoco.mj_forward(model, data)
 
     pos = data.body(ee_name).xpos.copy()
-    return pos
+    return pos, newpos
 
 
 def inverse_kinematics(target_pos, leftside: bool):
     max_iteration = 5000;
-    tol = 0.1;
+    tol = 0.000001;
     alpha = 0.9
     learning_rate = 1
 
@@ -57,46 +57,56 @@ def inverse_kinematics(target_pos, leftside: bool):
 
     mujoco.mj_forward(model, data)
     for i in range(max_iteration):
-        ee_pos = forward_kinematics(cur_qpos, leftside)
+        ee_pos, full_pos = forward_kinematics(cur_qpos, leftside)
         error = np.subtract(target_pos, ee_pos)
         if i % 7 == 0:
-            print(error)
+            print(f"Iteration {i}, Error: {np.linalg.norm(error):.6f}")
+            print(target_pos)
+            print(ee_pos)
 
         if np.linalg.norm(error) < tol:
             print(f"Converged in {i} iterations")
-            return cur_qpos
+            return full_pos
     
         jacp = np.zeros((3, model.nv)) # 5 for 5DoF arm
         jacr = np.zeros((3, model.nv))
         # breakpoint
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
-        jacp = slice_dofs(model, data, jacp, leftside)
-        jacr = slice_dofs(model, data, jacr, leftside)
+        # jacp = slice_dofs(model, data, jacp, leftside)
+        # jacr = slice_dofs(model, data, jacr, leftside)
 
         grad = alpha * jacp.T @ error
-        breakpoint()
-        cur_qpos +=  grad * learning_rate
+        full_pos +=  grad * learning_rate
+        cur_qpos = slice_dofs(model, data, full_pos, leftside)
+        cur_qpos = cur_qpos.flatten()
+        # breakpoint()
     
     # mujoco.mj_resetData(model, data)
-    return cur_qpos
+    return full_pos
     
 calc_qpos = inverse_kinematics(target, True)
 
 
-# ansqpos = move_joints(model, data, [0.3, -0.5, pi*(3/2), -2, 0.5], leftside=True)
-# data.qpos = ansqpos
-# mujoco.mj_step(model, data)
 
-
-
-
-def key_callback(keycode):
-    if keycode == 114:  # 'r' key
+def key_cb(key):
+    keycode = chr(key)
+    if keycode == 'R':
         mujoco.mj_resetData(model, data)
-        print("Simulation reset")
+    elif keycode == 'Q':
+        data.qpos = calc_qpos
+        mujoco.mj_step(model, data)
+        time.sleep(1)
+        print("Goin to Calculated Position")
+        print(data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos)
+    elif keycode == 'V':
+        data.qpos = ansqpos
+        mujoco.mj_step(model, data)
+        time.sleep(1)
+        print("Goin to Answer Position")
+        print(data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos)
     
 
-with mujoco.viewer.launch_passive(model, data, key_callback=key_callback) as viewer:
+with mujoco.viewer.launch_passive(model, data, key_callback=key_cb) as viewer:
 
     while viewer.is_running():
         mujoco.mj_step(model, data)
