@@ -24,6 +24,8 @@ data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
 
+breakpoint()
+
 #* Reset to rest.
 mujoco.mj_resetData(model, data)
 
@@ -86,7 +88,7 @@ def inverse_kinematics(target_pos, leftside: bool):
     
 calc_qpos = inverse_kinematics(target, True)
 
-
+# ([-0.23233644,  0.07232578,  0.87956266])
 
 def key_cb(key):
     keycode = chr(key)
@@ -95,14 +97,14 @@ def key_cb(key):
     elif keycode == 'Q':
         data.qpos = calc_qpos
         mujoco.mj_step(model, data)
-        time.sleep(1)
         print("Goin to Calculated Position")
+        np.savetxt('./vr_teleop/data/calculated_qpos.txt', calc_qpos)
         print(data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos)
     elif keycode == 'V':
         data.qpos = ansqpos
         mujoco.mj_step(model, data)
-        time.sleep(1)
         print("Goin to Answer Position")
+        np.savetxt('./vr_teleop/data/ans_qpos.txt', ansqpos)
         print(data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos)
     
 
