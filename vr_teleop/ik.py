@@ -52,32 +52,15 @@ def joint_limit_clamp(full_qpos):
     
     return full_qpos
 
-
-def quat_mult(q1, q2):
-    # Multiply two quaternions q1 and q2 (assumed [w, x, y, z])
-    w1, x1, y1, z1 = q1
-    w2, x2, y2, z2 = q2
-    return np.array([
-        w1*w2 - x1*x2 - y1*y2 - z1*z2,
-        w1*x2 + x1*w2 + y1*z2 - z1*y2,
-        w1*y2 - x1*z2 + y1*w2 + z1*x2,
-        w1*z2 + x1*y2 - y1*x2 + z1*w2
-    ])
-
-def quat_conjugate(q):
-    # Conjugate of quaternion q = [w, x, y, z]
-    w, x, y, z = q
-    return np.array([w, -x, -y, -z])
-
 def orientation_error(target_quat, current_quat):
-    # Compute the relative rotation quaternion:
-    dq = quat_mult(target_quat, quat_conjugate(current_quat))
-    # Normalize to avoid numerical issues:
+    cur_quat_conj = np.zeros(4)
+    mujoco.mju_negQuat(cur_quat_conj, current_quat)
+    dq = np.zeros(4)
+    mujoco.mju_mulQuat(dq, target_quat, cur_quat_conj)
+
     dq = dq / np.linalg.norm(dq)
-    # Make sure the scalar part is nonnegative to get the shortest rotation:
     if dq[0] < 0:
         dq = -dq
-    # For small angles, the error can be approximated by 2*[x, y, z]
     return 2 * dq[1:4]
 
 
