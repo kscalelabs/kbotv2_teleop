@@ -71,22 +71,11 @@ def inverse_kinematics(target_pos, leftside: bool):
     tol = 0.01;
     # Alpha controls the step size in the Jacobian transpose method
     # Reduce alpha to avoid overshooting
-    alpha = 0.3
-    
     # Learning rate further scales the update
+    alpha = 0.8
     learning_rate = 0.5
-    
-    # Add random initialization or perturbation to avoid local minima
-    cur_qpos = get_joints(model, data, leftside)
-    
-    # Add a small random perturbation to initial joint angles to escape local minima
-    # This can help explore the negative range for elbow joints
-    cur_qpos += np.random.uniform(-0.1, 0.1, size=cur_qpos.shape)
 
-    # Make sure the random perturbation doesn't violate joint limits
-    cur_qpos_full = move_joints(model, data, cur_qpos, leftside)
-    cur_qpos_full = joint_limit_clamp(cur_qpos_full)
-    cur_qpos = slice_dofs(model, data, cur_qpos_full, leftside)
+    cur_qpos = get_joints(model, data, leftside, True)
 
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
@@ -125,13 +114,6 @@ def inverse_kinematics(target_pos, leftside: bool):
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
 
         grad = alpha * jacp.T @ error
-
-
-        # Add occasional random perturbation to escape local minima
-        if i > 0 and i % 73 == 0:
-            breakpoint()
-            logger.info("Adding random perturbation to escape local minimum")
-            grad += np.random.uniform(-0.1, 0.1, size=grad.shape)
             
         full_pos += grad * learning_rate
         joint_limit_clamp(full_pos)
@@ -140,7 +122,6 @@ def inverse_kinematics(target_pos, leftside: bool):
         cur_qpos = cur_qpos.flatten()
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {best_error:.6f}")
-    # Return the best solution found
     return best_pos
 
 calc_qpos = inverse_kinematics(target, True)
@@ -154,7 +135,7 @@ def key_cb(key):
         data.qpos = calc_qpos
         data.qvel[:] = 0
         mujoco.mj_forward(model, data)
-        logger.info("Going to Calculated Position")
+        logger.info("Teleported to Calculated Position")
         np.savetxt('./vr_teleop/data/calculated_qpos.txt', calc_qpos)
         logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
 

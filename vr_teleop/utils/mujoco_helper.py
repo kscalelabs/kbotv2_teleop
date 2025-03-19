@@ -28,7 +28,7 @@ l_end_effector = ["KB_C_501X_Bayonet_Adapter_Hard_Stop_2"]
 #     pos = data.body(ee_name).xpos.copy()
 #     return pos
 
-def get_joints(model, data, leftside: bool):
+def get_joints(model, data, leftside: bool, tolimitcenter: bool = False):
     if leftside:
         tjoints = [
             "left_shoulder_pitch_03",
@@ -57,6 +57,21 @@ def get_joints(model, data, leftside: bool):
             print(f"Warning: Joint '{key}' not found in model")
     
     joint_positions = np.array([data.qpos[idx] for idx in joint_indices])
+    
+    # Move joints to median of limits if tolimitcenter is True
+    if tolimitcenter:
+        for i, key in enumerate(tjoints):
+            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, key)
+            if joint_id >= 0:
+                # Check if joint has limits
+                if model.jnt_limited[joint_id]:
+                    # Calculate median between upper and lower limits
+                    lower_limit = model.jnt_range[joint_id, 0]
+                    upper_limit = model.jnt_range[joint_id, 1]
+                    median_position = (lower_limit + upper_limit) / 2
+                    
+                    # Update the joint position to the median
+                    joint_positions[i] = median_position
     
     return joint_positions
 
