@@ -31,6 +31,9 @@ ansqpos = arms_to_fullqpos(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=Tr
 data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
+target_ort = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xmat.copy()
+
+
 
 
 #* Reset to rest.
@@ -63,20 +66,15 @@ def forward_kinematics(joint_angles, leftside: bool):
     mujoco.mj_forward(model, data)
 
     pos = data.body(ee_name).xpos.copy()
-    return pos, newpos
+    return pos
 
 
 def inverse_kinematics(target_pos, initialstate, leftside: bool):
     max_iteration = 10000;
     tol = 0.01;
-    # Alpha controls the step size in the Jacobian transpose method
-    # Reduce alpha to avoid overshooting
-    # Learning rate further scales the update
     step_size = 0.8
-    # alpha = 0.8
     damping = 0.5
 
-    cur_qpos = initialstate
 
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
@@ -85,20 +83,18 @@ def inverse_kinematics(target_pos, initialstate, leftside: bool):
 
     mujoco.mj_forward(model, data)
     
-    # Track best solution
-    best_error = float('inf')
-    best_pos = None
+    next_pos_arm = initialstate.copy()
     
     for i in range(max_iteration):
-        ee_pos, full_pos = forward_kinematics(cur_qpos, leftside)
+        ee_pos = forward_kinematics(next_pos_arm, leftside=leftside)
         error = np.subtract(target_pos, ee_pos)
         error_norm = np.linalg.norm(error)
-        
-        # Track best solution
-        if error_norm < best_error:
-            best_error = error_norm
-            best_pos = full_pos.copy()
-    
+        # error_rot = 
+
+        prev_pos_arm = next_pos_arm.copy()
+        prev_pos = arms_to_fullqpos(model, data, prev_pos_arm, leftside=leftside)
+
+
         jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
 
@@ -106,14 +102,19 @@ def inverse_kinematics(target_pos, initialstate, leftside: bool):
         I = np.identity(n)
 
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
+        
+        #*Term for Translation:
         J_inv = np.linalg.inv(jacp.T @ jacp + damping * I) @ jacp.T
-        delta_q = J_inv @ error
-            
-        full_pos += delta_q * step_size
-        joint_limit_clamp(full_pos)
+        #*Term for Rotation:
+        # JR_inv = np.linalg.inv(jacr.T @ jacr + damping * I) @ jacr.T
+        delta_q = J_inv @ error 
+        # + JR_inv @ error_rot
+        
+        next_pos = prev_pos + delta_q * step_size
 
-        cur_qpos = slice_dofs(model, data, full_pos, leftside)
-        cur_qpos = cur_qpos.flatten()
+        next_pos = joint_limit_clamp(next_pos)
+        next_pos_arm = slice_dofs(model, data, next_pos, leftside)
+        next_pos_arm = next_pos_arm.flatten()
 
         if i % 88 == 0:
             # Calculate the row-reduced echelon form (RREF) of the Jacobian
@@ -122,26 +123,24 @@ def inverse_kinematics(target_pos, initialstate, leftside: bool):
             logger.debug(f"Rank is: {np.linalg.matrix_rank(jacp)}")
             logger.debug(f"Iteration {i}, Error: {error}, Error norm: {error_norm:.6f}")
             logger.debug(f"Jacobian (position): {jacp}, and the Jacobian Transpose: {jacp.T}")
-            # logger.debug(f"Jacobian Transpose * Error * Alpha (0.8): {np.linalg.norm(grad)}, full: {grad}")
+            logger.debug(f"Jacobian Transpose * Error * Alpha (0.8): {np.linalg.norm(delta_q)}, full: {delta_q}")
             jac_det = np.linalg.det(jacp @ jacp.T)
             logger.debug(f"Jacobian determinant: {jac_det:.6f}")
             logger.debug(f"Target position: {target_pos}")
             logger.debug(f"Current end effector position: {ee_pos}")
-            logger.debug(f"Current joints: {cur_qpos}")
+            logger.debug(f"Current joints: {next_pos_arm}")
             # breakpoint()
 
         if error_norm < tol:
             logger.info(f"Converged in {i} iterations")
-            return full_pos
+            return next_pos
     
-    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {best_error:.6f}")
-    return best_pos
+    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm:.6f}")
+    return next_pos
 
 # startingpos = get_arm_qpos(model, data, True, True)
 # startingpos = arms_to_fullqpos(model, data, startingpos.flatten(), True)
-
-initial_states = get_arm_qpos(model, data, leftside=True, tolimitcenter=False)
-breakpoint()
+initial_states = get_arm_qpos(model, data, leftside=True, tolimitcenter=True)
 # initial_states = np.array([0, 0, 0, -0.35, 0])
 # initial_states = np.array([0, 0, 0, 0, 0])
 

@@ -83,11 +83,9 @@ def forward_kinematics(joint_angles):
     
     return ee_pos
 
-def inverse_kinematics(target_pos, max_iter=1000, tol=0.01):
+def inverse_kinematics(target_pos, initialstate, max_iter=1000, tol=0.01):
     """Compute inverse kinematics using damped least squares method"""
-    # Initial joint configuration (current position)
-    # q = np.array([0.1, -0.1])
-    q = np.array([0, 0])
+    q = initialstate
     
     # Parameters for the algorithm
     damping = 0.1
@@ -180,9 +178,11 @@ def inverse_kinematics(target_pos, max_iter=1000, tol=0.01):
     logger.warning(f"Failed to converge after {max_iter} iterations, best error: {best_error:.6f}")
     return best_q
 
-# Calculate the IK solution
 calc_qpos = np.zeros_like(data.qpos)
-ik_solution = inverse_kinematics(target)
+
+initialstate = np.array([2, 0])
+
+ik_solution = inverse_kinematics(target, initialstate)
 calc_qpos[:len(ik_solution)] = ik_solution
 logger.info(f"IK solution: joint1={np.degrees(ik_solution[0]):.2f}°, joint2={np.degrees(ik_solution[1]):.2f}°")
 
@@ -225,7 +225,7 @@ def key_cb(key):
         logger.info(f"Target endpoint: {endpoint}")
     elif keycode == 'P' or keycode == 'p':
         # Move to starting position
-        data.qpos = startingpos.copy()
+        data.qpos = initialstate.copy()
         data.qvel[:] = 0
         mujoco.mj_forward(model, data)
         logger.info('Teleported to starting position')
