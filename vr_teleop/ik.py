@@ -26,8 +26,8 @@ sim_time = 0.0
 mujoco.mj_step(model, data)
 
 #* Mock Example End Point the arm should go to: TEST
-# ansqpos = move_joints(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
-ansqpos = move_joints(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
+ansqpos = move_joints(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
+# ansqpos = move_joints(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
 data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
@@ -77,7 +77,8 @@ def inverse_kinematics(target_pos, leftside: bool):
     damping = 0.5
 
     # cur_qpos = get_joints(model, data, leftside, tolimitcenter=False)
-    cur_qpos = np.array([0, 0, 0, -0.35, 0])
+    # cur_qpos = np.array([0, 0, 0, -0.35, 0])
+    cur_qpos = np.array([0, 0, 0, 0, 0])
 
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
