@@ -20,6 +20,9 @@ class CustomFormatter(logging.Formatter):
         elif record.levelno == logging.WARNING:
             levelname_color = f"{RED}{record.levelname}{RESET}"
             record.msg = f"{RED}{record.msg}{RESET}"
+        elif record.levelno == logging.DEBUG:
+            levelname_color = f"\033[90m{record.levelname}{RESET}"  # Grey color for DEBUG
+            record.msg = f"\033[90m{record.msg}{RESET}"
         else:
             levelname_color = record.levelname
         

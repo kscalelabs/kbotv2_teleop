@@ -3,6 +3,14 @@ import mujoco.viewer
 import time
 import numpy as np
 from vr_teleop.utils.mujoco_helper import *
+import logging
+from vr_teleop.utils.logging import setup_logger
+
+# Set up logger
+logger = setup_logger(__name__)
+# Set logging level (adjust as needed)
+# logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 pi = np.pi
 
@@ -62,12 +70,12 @@ def inverse_kinematics(target_pos, leftside: bool):
         ee_pos, full_pos = forward_kinematics(cur_qpos, leftside)
         error = np.subtract(target_pos, ee_pos)
         if i % 7 == 0:
-            print(f"Iteration {i}, Error: {np.linalg.norm(error):.6f}")
-            print(target_pos)
-            print(ee_pos)
+            logger.info(f"Iteration {i}, Error: {np.linalg.norm(error):.6f}")
+            logger.debug(f"Target position: {target_pos}")
+            logger.debug(f"Current end effector position: {ee_pos}")
 
         if np.linalg.norm(error) < tol:
-            print(f"Converged in {i} iterations")
+            logger.info(f"Converged in {i} iterations")
             return full_pos
     
         jacp = np.zeros((3, model.nv)) # 5 for 5DoF arm
@@ -94,18 +102,19 @@ def key_cb(key):
     keycode = chr(key)
     if keycode == 'R':
         mujoco.mj_resetData(model, data)
+        logger.info("Reset data")
     elif keycode == 'Q':
         data.qpos = calc_qpos
         mujoco.mj_step(model, data)
-        print("Goin to Calculated Position")
+        logger.info("Going to Calculated Position")
         np.savetxt('./vr_teleop/data/calculated_qpos.txt', calc_qpos)
-        print(data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos)
+        logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
     elif keycode == 'V':
         data.qpos = ansqpos
         mujoco.mj_step(model, data)
-        print("Goin to Answer Position")
+        logger.info("Going to Answer Position")
         np.savetxt('./vr_teleop/data/ans_qpos.txt', ansqpos)
-        print(data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos)
+        logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
     
 
 with mujoco.viewer.launch_passive(model, data, key_callback=key_cb) as viewer:
