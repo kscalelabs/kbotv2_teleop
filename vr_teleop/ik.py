@@ -27,7 +27,8 @@ sim_time = 0.0
 mujoco.mj_step(model, data)
 
 #* Mock Example End Point the arm should go to: TEST
-ansqpos = move_joints(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
+# ansqpos = move_joints(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
+ansqpos = move_joints(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
 data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
@@ -124,6 +125,9 @@ def inverse_kinematics(target_pos, leftside: bool):
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {best_error:.6f}")
     return best_pos
 
+startingpos = get_joints(model, data, True, True)
+startingpos = move_joints(model, data, startingpos.flatten(), True)
+
 calc_qpos = inverse_kinematics(target, True)
 
 def key_cb(key):
@@ -133,18 +137,21 @@ def key_cb(key):
         logger.info("Reset data")
     elif keycode == 'Q':
         data.qpos = calc_qpos
-        data.qvel[:] = 0
+        # data.qvel[:] = 0
         mujoco.mj_forward(model, data)
         logger.info("Teleported to Calculated Position")
         np.savetxt('./vr_teleop/data/calculated_qpos.txt', calc_qpos)
         logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
-
     elif keycode == 'V':
         data.qpos = ansqpos
         mujoco.mj_forward(model, data)
         logger.info("Teleported to Answer Position")
         np.savetxt('./vr_teleop/data/ans_qpos.txt', ansqpos)
         logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
+    elif keycode == 'P':
+        data.qpos = startingpos
+        mujoco.mj_forward(model, data)
+        logger.info('Teleported to Optimization initial condition')
     
 
 with mujoco.viewer.launch_passive(model, data, key_callback=key_cb) as viewer:
