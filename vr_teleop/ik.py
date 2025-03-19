@@ -26,14 +26,12 @@ sim_time = 0.0
 mujoco.mj_step(model, data)
 
 #* Mock Example End Point the arm should go to: TEST
-ansqpos = arms_to_fullqpos(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
-# ansqpos = arms_to_fullqpos(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
+# ansqpos = arms_to_fullqpos(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
+ansqpos = arms_to_fullqpos(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
 data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
-target_ort = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xmat.copy()
-
-
+target_ort = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xquat.copy()
 
 
 #* Reset to rest.
@@ -55,6 +53,34 @@ def joint_limit_clamp(full_qpos):
     return full_qpos
 
 
+def quat_mult(q1, q2):
+    # Multiply two quaternions q1 and q2 (assumed [w, x, y, z])
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    return np.array([
+        w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        w1*x2 + x1*w2 + y1*z2 - z1*y2,
+        w1*y2 - x1*z2 + y1*w2 + z1*x2,
+        w1*z2 + x1*y2 - y1*x2 + z1*w2
+    ])
+
+def quat_conjugate(q):
+    # Conjugate of quaternion q = [w, x, y, z]
+    w, x, y, z = q
+    return np.array([w, -x, -y, -z])
+
+def orientation_error(target_quat, current_quat):
+    # Compute the relative rotation quaternion:
+    dq = quat_mult(target_quat, quat_conjugate(current_quat))
+    # Normalize to avoid numerical issues:
+    dq = dq / np.linalg.norm(dq)
+    # Make sure the scalar part is nonnegative to get the shortest rotation:
+    if dq[0] < 0:
+        dq = -dq
+    # For small angles, the error can be approximated by 2*[x, y, z]
+    return 2 * dq[1:4]
+
+
 def forward_kinematics(joint_angles, leftside: bool):
     """
     Compute forward kinematics of given joint angles by MuJoCo
@@ -66,10 +92,13 @@ def forward_kinematics(joint_angles, leftside: bool):
     mujoco.mj_forward(model, data)
 
     pos = data.body(ee_name).xpos.copy()
-    return pos
+
+    ort = data.body(ee_name).xquat.copy()
+
+    return pos, ort
 
 
-def inverse_kinematics(target_pos, initialstate, leftside: bool):
+def inverse_kinematics(target_pos, target_ort, initialstate, leftside: bool):
     max_iteration = 10000;
     tol = 0.01;
     step_size = 0.8
@@ -86,10 +115,11 @@ def inverse_kinematics(target_pos, initialstate, leftside: bool):
     next_pos_arm = initialstate.copy()
     
     for i in range(max_iteration):
-        ee_pos = forward_kinematics(next_pos_arm, leftside=leftside)
+        ee_pos, ee_rot = forward_kinematics(next_pos_arm, leftside=leftside)
         error = np.subtract(target_pos, ee_pos)
         error_norm = np.linalg.norm(error)
-        # error_rot = 
+
+        error_rot = orientation_error(target_ort, ee_rot)
 
         prev_pos_arm = next_pos_arm.copy()
         prev_pos = arms_to_fullqpos(model, data, prev_pos_arm, leftside=leftside)
@@ -106,9 +136,8 @@ def inverse_kinematics(target_pos, initialstate, leftside: bool):
         #*Term for Translation:
         J_inv = np.linalg.inv(jacp.T @ jacp + damping * I) @ jacp.T
         #*Term for Rotation:
-        # JR_inv = np.linalg.inv(jacr.T @ jacr + damping * I) @ jacr.T
-        delta_q = J_inv @ error 
-        # + JR_inv @ error_rot
+        JR_inv = np.linalg.inv(jacr.T @ jacr + damping * I) @ jacr.T
+        delta_q = J_inv @ error + JR_inv @ error_rot
         
         next_pos = prev_pos + delta_q * step_size
 
@@ -144,9 +173,10 @@ initial_states = get_arm_qpos(model, data, leftside=True, tolimitcenter=True)
 # initial_states = np.array([0, 0, 0, -0.35, 0])
 # initial_states = np.array([0, 0, 0, 0, 0])
 
-calc_qpos = inverse_kinematics(target, initial_states, leftside=True)
+calc_qpos = inverse_kinematics(target, target_ort, initial_states, leftside=True)
 
 def key_cb(key):
+    global viewer_ref
     keycode = chr(key)
     if keycode == 'R':
         mujoco.mj_resetData(model, data)
@@ -158,21 +188,32 @@ def key_cb(key):
         logger.info("Teleported to Calculated Position")
         np.savetxt('./vr_teleop/data/calculated_qpos.txt', calc_qpos)
         logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
+        logger.info(f"End effector orientation: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xquat}")
     elif keycode == 'V':
         data.qpos = ansqpos
         mujoco.mj_forward(model, data)
         logger.info("Teleported to Answer Position")
         np.savetxt('./vr_teleop/data/ans_qpos.txt', ansqpos)
         logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
+        logger.info(f"End effector orientation: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xquat}")
     elif keycode == 'P':
         data.qpos = arms_to_fullqpos(model, data, initial_states, True)
         mujoco.mj_forward(model, data)
         logger.info('Teleported to Optimization initial condition')
-    
+    elif keycode == "O":
+        if viewer_ref[0].opt.frame == 7:
+            viewer_ref[0].opt.frame = 1
+        else:
+            viewer_ref[0].opt.frame = 7
+        viewer_ref[0].sync()
+        logger.info("Toggled frame visualization")
+
+viewer_ref = []
 
 with mujoco.viewer.launch_passive(model, data, key_callback=key_cb) as viewer:
 
     while viewer.is_running():
+        viewer_ref.append(viewer)
         mujoco.mj_step(model, data)
         sim_time += model.opt.timestep
         viewer.sync()
