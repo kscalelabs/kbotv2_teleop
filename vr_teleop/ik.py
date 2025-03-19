@@ -32,7 +32,6 @@ data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
 
-breakpoint()
 
 #* Reset to rest.
 mujoco.mj_resetData(model, data)
@@ -47,18 +46,19 @@ def joint_limit_clamp(full_qpos):
             full_qpos[i] = max(model.jnt_range[i][0], min(full_qpos[i], model.jnt_range[i][1]))
             new_value = full_qpos[i].copy()
             if prev_value != new_value:
-                logger.debug(f"Updated joint {i} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
+                joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or f"joint_{i}"
+                logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
     
     return full_qpos
 
 
-def forward_kinematics(joint_anlges, leftside: bool):
+def forward_kinematics(joint_angles, leftside: bool):
     """
     Compute forward kinematics of given joint angles by MuJoCo
     Go to position and read position
     """
     ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2" if leftside else "KB_C_501X_Bayonet_Adapter_Hard_Stop"
-    newpos = move_joints(model, data, joint_anlges, leftside)
+    newpos = move_joints(model, data, joint_angles.flatten(), leftside)
     data.qpos = newpos
     mujoco.mj_forward(model, data)
 
@@ -70,15 +70,23 @@ def inverse_kinematics(target_pos, leftside: bool):
     max_iteration = 10000;
     tol = 0.01;
     # Alpha controls the step size in the Jacobian transpose method
-    # Too high: overshooting, oscillation
-    # Too low: slow convergence
-    alpha = 0.5
+    # Reduce alpha to avoid overshooting
+    alpha = 0.3
     
     # Learning rate further scales the update
-    # Combined with alpha to control convergence speed and stability
     learning_rate = 0.5
-
+    
+    # Add random initialization or perturbation to avoid local minima
     cur_qpos = get_joints(model, data, leftside)
+    
+    # Add a small random perturbation to initial joint angles to escape local minima
+    # This can help explore the negative range for elbow joints
+    cur_qpos += np.random.uniform(-0.1, 0.1, size=cur_qpos.shape)
+
+    # Make sure the random perturbation doesn't violate joint limits
+    cur_qpos_full = move_joints(model, data, cur_qpos, leftside)
+    cur_qpos_full = joint_limit_clamp(cur_qpos_full)
+    cur_qpos = slice_dofs(model, data, cur_qpos_full, leftside)
 
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
@@ -86,36 +94,55 @@ def inverse_kinematics(target_pos, leftside: bool):
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop"
 
     mujoco.mj_forward(model, data)
+    
+    # Track best solution
+    best_error = float('inf')
+    best_pos = None
+    
     for i in range(max_iteration):
         ee_pos, full_pos = forward_kinematics(cur_qpos, leftside)
         error = np.subtract(target_pos, ee_pos)
+        error_norm = np.linalg.norm(error)
+        
+        # Track best solution
+        if error_norm < best_error:
+            best_error = error_norm
+            best_pos = full_pos.copy()
+        
         if i % 7 == 0:
-            logger.info(f"Iteration {i}, Error: {np.linalg.norm(error):.6f}")
+            logger.info(f"Iteration {i}, Error: {error_norm:.6f}")
             logger.debug(f"Target position: {target_pos}")
             logger.debug(f"Current end effector position: {ee_pos}")
+            # Log current joint angles
+            logger.debug(f"Current joints: {cur_qpos}")
 
-        if np.linalg.norm(error) < tol:
+        if error_norm < tol:
             logger.info(f"Converged in {i} iterations")
             return full_pos
     
-        jacp = np.zeros((3, model.nv)) # 5 for 5DoF arm
+        jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
-        # breakpoint
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
-        # jacp = slice_dofs(model, data, jacp, leftside)
-        # jacr = slice_dofs(model, data, jacr, leftside)
 
         grad = alpha * jacp.T @ error
-        full_pos +=  grad * learning_rate
+
+
+        # Add occasional random perturbation to escape local minima
+        if i > 0 and i % 73 == 0:
+            breakpoint()
+            logger.info("Adding random perturbation to escape local minimum")
+            grad += np.random.uniform(-0.1, 0.1, size=grad.shape)
+            
+        full_pos += grad * learning_rate
         joint_limit_clamp(full_pos)
 
         cur_qpos = slice_dofs(model, data, full_pos, leftside)
         cur_qpos = cur_qpos.flatten()
-        # breakpoint()
     
-    # mujoco.mj_resetData(model, data)
-    return full_pos
-    
+    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {best_error:.6f}")
+    # Return the best solution found
+    return best_pos
+
 calc_qpos = inverse_kinematics(target, True)
 
 def key_cb(key):
