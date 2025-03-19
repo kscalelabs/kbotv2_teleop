@@ -41,8 +41,11 @@ with mujoco.viewer.launch_passive(model, data) as viewer:
         frame_count += 1
 
         if sim_time > 2 and sim_time < 2.005 and not qpos_loaded:
-            # loaded_qpos = np.loadtxt('./vr_teleop/data/calculated_qpos.txt') #[-0.23478118  0.10839152  0.80010863]
-            loaded_qpos = np.loadtxt('./vr_teleop/data/ans_qpos.txt') #[-0.32186162  0.1665294   0.97334178]
+            loaded_qpos = np.loadtxt('./vr_teleop/data/calculated_qpos.txt') # [-0.35868784  0.19986784  0.84827277]
+            # loaded_qpos = np.loadtxt('./vr_teleop/data/ans_qpos.txt') # [-0.3135051   0.14240396  0.93119387]
+
+            # Error: 0.110542
+            # 0.22312012116158278
             data.qpos = loaded_qpos
             
             # Forward kinematics to update positions
