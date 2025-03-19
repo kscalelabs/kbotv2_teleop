@@ -2,11 +2,13 @@ import mujoco
 import numpy as np
 import logging
 from vr_teleop.utils.logging import setup_logger
+from vr_teleop.utils.mujoco_helper import debug_get_ee_pos
+
 
 # Use the custom logger setup instead of basic configuration
 logger = setup_logger(__name__)
 # Set to DEBUG level to see all messages during development
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO) #.DEBUG
 
 def get_adapter_position(qpos_file):
     # Load the model

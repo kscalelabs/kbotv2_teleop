@@ -9,8 +9,7 @@ from vr_teleop.utils.logging import setup_logger
 # Set up logger
 logger = setup_logger(__name__)
 # Set logging level (adjust as needed)
-# logger.setLevel(logging.INFO)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.DEBUG) #.DEBUG
 
 pi = np.pi
 
@@ -48,7 +47,7 @@ def joint_limit_clamp(full_qpos):
             new_value = full_qpos[i].copy()
             if prev_value != new_value:
                 joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or f"joint_{i}"
-                logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
+                # logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
     
     return full_qpos
 
@@ -73,10 +72,12 @@ def inverse_kinematics(target_pos, leftside: bool):
     # Alpha controls the step size in the Jacobian transpose method
     # Reduce alpha to avoid overshooting
     # Learning rate further scales the update
-    alpha = 0.8
-    learning_rate = 0.5
+    step_size = 0.8
+    # alpha = 0.8
+    damping = 0.5
 
-    cur_qpos = get_joints(model, data, leftside, True)
+    # cur_qpos = get_joints(model, data, leftside, tolimitcenter=False)
+    cur_qpos = np.array([0, 0, 0, -0.35, 0])
 
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
@@ -98,29 +99,41 @@ def inverse_kinematics(target_pos, leftside: bool):
         if error_norm < best_error:
             best_error = error_norm
             best_pos = full_pos.copy()
-        
-        if i % 7 == 0:
-            logger.info(f"Iteration {i}, Error: {error_norm:.6f}")
-            logger.debug(f"Target position: {target_pos}")
-            logger.debug(f"Current end effector position: {ee_pos}")
-            # Log current joint angles
-            logger.debug(f"Current joints: {cur_qpos}")
-
-        if error_norm < tol:
-            logger.info(f"Converged in {i} iterations")
-            return full_pos
     
         jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
-        mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
 
-        grad = alpha * jacp.T @ error
+        n = jacp.shape[1]
+        I = np.identity(n)
+
+        mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
+        J_inv = np.linalg.inv(jacp.T @ jacp + damping * I) @ jacp.T
+        delta_q = J_inv @ error
             
-        full_pos += grad * learning_rate
+        full_pos += delta_q * step_size
         joint_limit_clamp(full_pos)
 
         cur_qpos = slice_dofs(model, data, full_pos, leftside)
         cur_qpos = cur_qpos.flatten()
+
+        if i % 88 == 0:
+            # Calculate the row-reduced echelon form (RREF) of the Jacobian
+            # This helps analyze the linear independence of the Jacobian rows
+            # and identify potential singularities
+            logger.debug(f"Rank is: {np.linalg.matrix_rank(jacp)}")
+            logger.debug(f"Iteration {i}, Error: {error}, Error norm: {error_norm:.6f}")
+            logger.debug(f"Jacobian (position): {jacp}, and the Jacobian Transpose: {jacp.T}")
+            # logger.debug(f"Jacobian Transpose * Error * Alpha (0.8): {np.linalg.norm(grad)}, full: {grad}")
+            jac_det = np.linalg.det(jacp @ jacp.T)
+            logger.debug(f"Jacobian determinant: {jac_det:.6f}")
+            logger.debug(f"Target position: {target_pos}")
+            logger.debug(f"Current end effector position: {ee_pos}")
+            logger.debug(f"Current joints: {cur_qpos}")
+            # breakpoint()
+
+        if error_norm < tol:
+            logger.info(f"Converged in {i} iterations")
+            return full_pos
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {best_error:.6f}")
     return best_pos

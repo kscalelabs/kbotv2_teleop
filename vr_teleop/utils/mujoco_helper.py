@@ -9,24 +9,31 @@ r_end_effector = ["KB_C_501X_Bayonet_Adapter_Hard_Stop"]
 l_end_effector = ["KB_C_501X_Bayonet_Adapter_Hard_Stop_2"]
 
 
-# def get_ee(model, data, leftside: bool):
-#     if leftside:
-#         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
-#     else:
-#         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop"
-
+# Helper function for final error calculation (similar to novisual.py)
+def debug_get_ee_pos(qpos_file):
+    # Create a new model and data instance for clean calculation
+    temp_model = mujoco.MjModel.from_xml_path("vr_teleop/kbot_urdf/scene.mjcf")
+    temp_data = mujoco.MjData(temp_model)
     
-#     body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, ee_name)
-#     xpos_index = model.jnt_qposadr[body_id]
-#     pos = data.xpos[body_id].copy()
+    # Reset data and set model properties
+    mujoco.mj_resetData(temp_model, temp_data)
+    temp_model.opt.timestep = 0.001
+    temp_model.opt.gravity[2] = 0
+    
+    # Load qpos from file and apply it
+    loaded_qpos = np.loadtxt(qpos_file)
+    temp_data.qpos = loaded_qpos
+    temp_data.qvel[:] = 0
+    
+    # Forward kinematics to update positions
+    mujoco.mj_forward(temp_model, temp_data)
+    mujoco.mj_step(temp_model, temp_data)
+    
+    # Get the position of the adapter
+    adapter_position = temp_data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
+    
+    return adapter_position
 
-#     pos = data.body_xpos[body_id].copy()
-
-#     body_id = model.body_name2id(ee_name)
-#     pos = data.body_xpos[body_id].copy()
-
-#     pos = data.body(ee_name).xpos.copy()
-#     return pos
 
 def get_joints(model, data, leftside: bool, tolimitcenter: bool = False):
     if leftside:
