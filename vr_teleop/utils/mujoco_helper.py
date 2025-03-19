@@ -9,7 +9,6 @@ r_end_effector = ["KB_C_501X_Bayonet_Adapter_Hard_Stop"]
 l_end_effector = ["KB_C_501X_Bayonet_Adapter_Hard_Stop_2"]
 
 
-# Helper function for final error calculation (similar to novisual.py)
 def debug_get_ee_pos(qpos_file):
     # Create a new model and data instance for clean calculation
     temp_model = mujoco.MjModel.from_xml_path("vr_teleop/kbot_urdf/scene.mjcf")
@@ -35,7 +34,7 @@ def debug_get_ee_pos(qpos_file):
     return adapter_position
 
 
-def get_joints(model, data, leftside: bool, tolimitcenter: bool = False):
+def get_arm_qpos(model, data, leftside: bool, tolimitcenter: bool = False):
     if leftside:
         tjoints = [
             "left_shoulder_pitch_03",
@@ -125,7 +124,7 @@ def slice_dofs(model, data, input_list, leftside: bool):
     return result
 
 
-def move_joints(model, data, inputqloc: dict, leftside: bool, ):
+def arms_to_fullqpos(model, data, inputqloc: dict, leftside: bool, ):
     moves = {}
 
     newqpos = data.qpos.copy()

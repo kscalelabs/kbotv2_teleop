@@ -25,22 +25,17 @@ target_time = time.time()
 sim_time = 0.0
 mujoco.mj_step(model, data)
 
-# Set a demo target position by moving the robot to a specific configuration
-# and recording the end effector position
+
 ansqpos = data.qpos.copy()
-ansqpos[0] = np.radians(60)  # joint1 at 15 degrees
-ansqpos[1] = np.radians(-30)  # joint2 at -25 degrees
+ansqpos[0] = np.radians(60)
+ansqpos[1] = np.radians(-30)
 data.qpos = ansqpos.copy()
 mujoco.mj_forward(model, data)
-
-# Get the end effector position
 link2_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "link2")
 link2_pos = data.xpos[link2_body_id].copy()
 logger.info(f"Link2 body position: {link2_pos}")
-
-# We need to transform to get the end of the link (offset by the geom length)
 link2_mat = data.xmat[link2_body_id].reshape(3, 3)
-endpoint_offset = np.array([0.3, 0, 0])  # Offset to end of link2 in local coordinates
+endpoint_offset = np.array([0.3, 0, 0])
 target = link2_pos + link2_mat @ endpoint_offset
 logger.info(f"Target position (end of link2): {target}")
 

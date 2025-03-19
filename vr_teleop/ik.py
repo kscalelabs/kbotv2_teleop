@@ -26,8 +26,8 @@ sim_time = 0.0
 mujoco.mj_step(model, data)
 
 #* Mock Example End Point the arm should go to: TEST
-ansqpos = move_joints(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
-# ansqpos = move_joints(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
+ansqpos = arms_to_fullqpos(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
+# ansqpos = arms_to_fullqpos(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
 data.qpos = ansqpos.copy()
 mujoco.mj_step(model, data)
 target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
@@ -58,7 +58,7 @@ def forward_kinematics(joint_angles, leftside: bool):
     Go to position and read position
     """
     ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2" if leftside else "KB_C_501X_Bayonet_Adapter_Hard_Stop"
-    newpos = move_joints(model, data, joint_angles.flatten(), leftside)
+    newpos = arms_to_fullqpos(model, data, joint_angles.flatten(), leftside)
     data.qpos = newpos
     mujoco.mj_forward(model, data)
 
@@ -66,7 +66,7 @@ def forward_kinematics(joint_angles, leftside: bool):
     return pos, newpos
 
 
-def inverse_kinematics(target_pos, leftside: bool):
+def inverse_kinematics(target_pos, initialstate, leftside: bool):
     max_iteration = 10000;
     tol = 0.01;
     # Alpha controls the step size in the Jacobian transpose method
@@ -76,9 +76,7 @@ def inverse_kinematics(target_pos, leftside: bool):
     # alpha = 0.8
     damping = 0.5
 
-    # cur_qpos = get_joints(model, data, leftside, tolimitcenter=False)
-    # cur_qpos = np.array([0, 0, 0, -0.35, 0])
-    cur_qpos = np.array([0, 0, 0, 0, 0])
+    cur_qpos = initialstate
 
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
@@ -139,10 +137,15 @@ def inverse_kinematics(target_pos, leftside: bool):
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {best_error:.6f}")
     return best_pos
 
-startingpos = get_joints(model, data, True, True)
-startingpos = move_joints(model, data, startingpos.flatten(), True)
+# startingpos = get_arm_qpos(model, data, True, True)
+# startingpos = arms_to_fullqpos(model, data, startingpos.flatten(), True)
 
-calc_qpos = inverse_kinematics(target, True)
+initial_states = get_arm_qpos(model, data, leftside=True, tolimitcenter=False)
+breakpoint()
+# initial_states = np.array([0, 0, 0, -0.35, 0])
+# initial_states = np.array([0, 0, 0, 0, 0])
+
+calc_qpos = inverse_kinematics(target, initial_states, leftside=True)
 
 def key_cb(key):
     keycode = chr(key)
@@ -163,7 +166,7 @@ def key_cb(key):
         np.savetxt('./vr_teleop/data/ans_qpos.txt', ansqpos)
         logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
     elif keycode == 'P':
-        data.qpos = startingpos
+        data.qpos = arms_to_fullqpos(model, data, initial_states, True)
         mujoco.mj_forward(model, data)
         logger.info('Teleported to Optimization initial condition')
     
