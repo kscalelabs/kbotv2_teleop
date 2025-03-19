@@ -6,8 +6,9 @@ setup(
     packages=find_packages(),
     install_requires=[
         "websockets",
-        "pybullet",
-        "numpy"
+        "mujoco",
+        "numpy",
+        "pykos"
         # Add other dependencies here
     ],
 )

@@ -6,39 +6,14 @@ from vr_teleop.utils.mujoco_helper import *
 import logging
 from vr_teleop.utils.logging import setup_logger
 
-# Set up logger
 logger = setup_logger(__name__)
-# Set logging level (adjust as needed)
-logger.setLevel(logging.DEBUG) #.DEBUG
+logger.setLevel(logging.DEBUG) #.DEBUG .INFO
 
 pi = np.pi
 
 
-model = mujoco.MjModel.from_xml_path("vr_teleop/kbot_urdf/scene.mjcf")
-data = mujoco.MjData(model)
-
-mujoco.mj_resetData(model, data)
-model.opt.timestep = 0.001  # 0.001 = 1000hz
-model.opt.gravity = [0, 0, 0]  # Set gravity to zero
-
-target_time = time.time()
-sim_time = 0.0
-mujoco.mj_step(model, data)
-
-#* Mock Example End Point the arm should go to: TEST
-# ansqpos = arms_to_fullqpos(model, data, [0.2, -0.23, 0.4, -2, 0.52], leftside=True)
-ansqpos = arms_to_fullqpos(model, data, [1.8, -0.05, 0.8, -1.2, 0.12], leftside=True)
-data.qpos = ansqpos.copy()
-mujoco.mj_step(model, data)
-target = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xpos.copy()
-target_ort = data.body("KB_C_501X_Bayonet_Adapter_Hard_Stop_2").xquat.copy()
-
-
-#* Reset to rest.
-mujoco.mj_resetData(model, data)
-
 # * IK LOGIC
-def joint_limit_clamp(full_qpos):
+def joint_limit_clamp(model, full_qpos):
     # prev_qpos = full_qpos.copy()
 
     for i in range(model.nq):
@@ -64,7 +39,7 @@ def orientation_error(target_quat, current_quat):
     return 2 * dq[1:4]
 
 
-def forward_kinematics(joint_angles, leftside: bool):
+def forward_kinematics(model, data, joint_angles, leftside: bool):
     """
     Compute forward kinematics of given joint angles by MuJoCo
     Go to position and read position
@@ -81,7 +56,7 @@ def forward_kinematics(joint_angles, leftside: bool):
     return pos, ort
 
 
-def inverse_kinematics(target_pos, target_ort, initialstate, leftside: bool):
+def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftside: bool):
     max_iteration = 10000;
     tol = 0.01;
     step_size = 0.8
@@ -150,61 +125,29 @@ def inverse_kinematics(target_pos, target_ort, initialstate, leftside: bool):
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm:.6f}")
     return next_pos
 
-# startingpos = get_arm_qpos(model, data, True, True)
-# startingpos = arms_to_fullqpos(model, data, startingpos.flatten(), True)
-initial_states = get_arm_qpos(model, data, leftside=True, tolimitcenter=True)
-# initial_states = np.array([0, 0, 0, -0.35, 0])
-# initial_states = np.array([0, 0, 0, 0, 0])
+# # startingpos = get_arm_qpos(model, data, True, True)
+# # startingpos = arms_to_fullqpos(model, data, startingpos.flatten(), True)
+# initial_states = get_arm_qpos(model, data, leftside=True, tolimitcenter=True)
+# # initial_states = np.array([0, 0, 0, -0.35, 0])
+# # initial_states = np.array([0, 0, 0, 0, 0])
 
-calc_qpos = inverse_kinematics(target, target_ort, initial_states, leftside=True)
+# calc_qpos = inverse_kinematics(target, target_ort, initial_states, leftside=True)
 
-def key_cb(key):
-    global viewer_ref
-    keycode = chr(key)
-    if keycode == 'R':
-        mujoco.mj_resetData(model, data)
-        logger.info("Reset data")
-    elif keycode == 'Q':
-        data.qpos = calc_qpos
-        # data.qvel[:] = 0
-        mujoco.mj_forward(model, data)
-        logger.info("Teleported to Calculated Position")
-        np.savetxt('./vr_teleop/data/calculated_qpos.txt', calc_qpos)
-        logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
-        logger.info(f"End effector orientation: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xquat}")
-    elif keycode == 'V':
-        data.qpos = ansqpos
-        mujoco.mj_forward(model, data)
-        logger.info("Teleported to Answer Position")
-        np.savetxt('./vr_teleop/data/ans_qpos.txt', ansqpos)
-        logger.info(f"End effector position: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xpos}")
-        logger.info(f"End effector orientation: {data.body('KB_C_501X_Bayonet_Adapter_Hard_Stop_2').xquat}")
-    elif keycode == 'P':
-        data.qpos = arms_to_fullqpos(model, data, initial_states, True)
-        mujoco.mj_forward(model, data)
-        logger.info('Teleported to Optimization initial condition')
-    elif keycode == "O":
-        if viewer_ref[0].opt.frame == 7:
-            viewer_ref[0].opt.frame = 1
-        else:
-            viewer_ref[0].opt.frame = 7
-        viewer_ref[0].sync()
-        logger.info("Toggled frame visualization")
 
-viewer_ref = []
+# viewer_ref = []
 
-with mujoco.viewer.launch_passive(model, data, key_callback=key_cb) as viewer:
+# with mujoco.viewer.launch_passive(model, data, key_callback=key_cb) as viewer:
 
-    while viewer.is_running():
-        viewer_ref.append(viewer)
-        mujoco.mj_step(model, data)
-        sim_time += model.opt.timestep
-        viewer.sync()
+#     while viewer.is_running():
+#         viewer_ref.append(viewer)
+#         mujoco.mj_step(model, data)
+#         sim_time += model.opt.timestep
+#         viewer.sync()
 
-        target_time += model.opt.timestep
-        current_time = time.time()
-        if target_time - current_time > 0:
-            time.sleep(target_time - current_time)
+#         target_time += model.opt.timestep
+#         current_time = time.time()
+#         if target_time - current_time > 0:
+#             time.sleep(target_time - current_time)
 
 
 
