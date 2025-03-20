@@ -114,18 +114,23 @@ class KBot_Robot(MuJoCo_Robot):
             self.data.qpos = self.calc_qpos
             mujoco.mj_forward(self.model, self.data)
             self.logger.info("Teleported to Calculated Position")
-            self.logger.info(f"End effector position: {self.data.body(self.ee_name).xpos}")
-            self.logger.info(f"End effector orientation: {self.data.body(self.ee_name).xquat}")
+            self.logger.debug(f"End effector position: {self.data.body(self.ee_name).xpos}")
+            self.logger.debug(f"End effector orientation: {self.data.body(self.ee_name).xquat}")
+            armJoints = self.convert_fullqpos_to_arm(self.calc_qpos.copy(), self.leftside)
+            self.logger.debug(f"Arm Joints at: {armJoints}")
         elif keycode == 'V' and self.ans_qpos is not None:
             self.data.qpos = self.ans_qpos
             mujoco.mj_forward(self.model, self.data)
             self.logger.info("Teleported to Answer Position")
-            self.logger.info(f"End effector position: {self.data.body(self.ee_name).xpos}")
-            self.logger.info(f"End effector orientation: {self.data.body(self.ee_name).xquat}")
+            self.logger.debug(f"End effector position: {self.data.body(self.ee_name).xpos}")
+            self.logger.debug(f"End effector orientation: {self.data.body(self.ee_name).xquat}")
+            armJoints = self.convert_fullqpos_to_arm(self.ans_qpos.copy(), self.leftside)
+            self.logger.debug(f"Arm Joints at: {armJoints}")
         elif keycode == 'P' and self.initial_states is not None:
+            self.logger.info('Teleported to Optimization initial condition')
+            self.logger.debug(f"Initial states: {self.initial_states}, Leftside: {self.leftside}")
             self.data.qpos = self.convert_armqpos_to_fullqpos(self.initial_states, self.leftside)
             mujoco.mj_forward(self.model, self.data)
-            self.logger.info('Teleported to Optimization initial condition')
         elif keycode == "O" and self.viewer_ref:
             if self.viewer_ref[0].opt.frame == 7:
                 self.viewer_ref[0].opt.frame = 1
@@ -246,6 +251,39 @@ class KBot_Robot(MuJoCo_Robot):
                 newqpos[qpos_index] = value
         
         return newqpos
+
+    def convert_fullqpos_to_arm(self, fullq, leftside: bool):
+        if leftside:
+            tjoints = [
+                "left_shoulder_pitch_03",
+                "left_shoulder_roll_03",
+                "left_shoulder_yaw_02",
+                "left_elbow_02",
+                "left_wrist_02"
+            ]
+        else:
+            tjoints = [
+                "right_shoulder_pitch_03",
+                "right_shoulder_roll_03",
+                "right_shoulder_yaw_02",
+                "right_elbow_02",
+                "right_wrist_02"
+            ]
+        
+        # Create a dictionary to store joint names and positions
+        arm_positions = {}
+        
+        for key in tjoints:
+            joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, key)
+            if joint_id >= 0:  # Check if joint exists
+                qpos_index = self.model.jnt_qposadr[joint_id]
+                # Format the float value to 6 decimal places
+                arm_positions[key] = round(float(fullq[qpos_index]), 6)
+            else:
+                self.logger.warning(f"During convert_fullqpos_to_arm: Joint '{key}' not found in model")
+                arm_positions[key] = 0.0  # Default value if joint not found
+        
+        return arm_positions
 
 
 

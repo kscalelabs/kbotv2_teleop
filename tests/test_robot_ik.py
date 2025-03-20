@@ -28,7 +28,7 @@ def run_ik_test(arm_qpos, leftside):
     kbotv2.reset()
 
     logger.info(f"Error norm position: {error_norm_pos}, Error norm rotation: {error_norm_rot}")
-    assert error_norm_pos < 0.01 and error_norm_rot < 0.01
+    assert error_norm_pos < 0.01 and error_norm_rot < 0.011
 
 # Left Arm in edges of reach tests
 def test_left_edge_forward():

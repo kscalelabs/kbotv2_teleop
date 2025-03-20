@@ -6,7 +6,7 @@ import logging
 from vr_teleop.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
-logger.setLevel(logging.INFO) #.DEBUG .INFO
+logger.setLevel(logging.DEBUG) #.DEBUG .INFO
 
 pi = np.pi
 
@@ -28,7 +28,7 @@ def joint_limit_clamp(model, full_qpos):
             new_value = full_qpos[i].copy()
             if prev_value != new_value:
                 joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or f"joint_{i}"
-                # logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
+                logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
     
     return full_qpos
 
