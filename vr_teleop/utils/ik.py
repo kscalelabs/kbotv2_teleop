@@ -5,6 +5,9 @@ import numpy as np
 import logging
 from vr_teleop.utils.logging import setup_logger
 
+import csv
+import os
+
 logger = setup_logger(__name__)
 logger.setLevel(logging.DEBUG) #.DEBUG .INFO
 
@@ -146,7 +149,53 @@ def forward_kinematics(model, data, joint_angles, leftside: bool):
     return pos, ort
 
 
-def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftside: bool):
+def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=True):
+    """
+    Save the tracked arm positions and errors to a CSV file.
+    
+    Args:
+        arm_positions: List of arm joint positions at each iteration
+        error_norms: List of (position_error, rotation_error) tuples at each iteration
+        leftside: Boolean indicating if this is the left arm
+        converged: Boolean indicating if IK successfully converged
+    """
+    if not arm_positions:
+        logger.warning("No arm positions to save")
+        return None
+        
+    # Create logs directory if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
+    
+    # Create a filename with timestamp
+    # timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    arm_side = 'left' if leftside else 'right'
+    status = "" if converged else "_unconverged"
+    filename = f'logs/ik_solving.csv'
+    
+    # Write to CSV
+    with open(filename, 'w', newline='') as f:
+        writer = csv.writer(f)
+        # Write header
+        joint_names = []
+        if leftside:
+            joint_names = ["left_shoulder_pitch", "left_shoulder_roll", 
+                          "left_shoulder_yaw", "left_elbow", "left_wrist"]
+        else:
+            joint_names = ["right_shoulder_pitch", "right_shoulder_roll", 
+                          "right_shoulder_yaw", "right_elbow", "right_wrist"]
+        
+        header = joint_names + ["pos_error", "rot_error", "iteration"]
+        writer.writerow(header)
+        
+        # Write data
+        for idx, (pos, errors) in enumerate(zip(arm_positions, error_norms)):
+            row = list(pos) + [errors[0], errors[1], idx]
+            writer.writerow(row)
+    
+    logger.info(f"Arm position tracking saved to {filename}")
+    return filename
+
+def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftside: bool, debug=False):
     max_iteration = 1000;
     tol = 0.01;
     step_size = 0.8
@@ -154,6 +203,10 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
 
     rot_w = 0.6
     trans_w = 1  
+
+    # For logging to file
+    arm_positions = []
+    error_norms = []
 
     # Define multiple initial states to try when stuck
     if leftside:
@@ -186,6 +239,11 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
         error_rot = orientation_error(target_ort, ee_rot)
         error_norm_rot = np.linalg.norm(error_rot)
 
+        # Store current arm position and error for tracking
+        if debug:
+            arm_positions.append(next_pos_arm.copy())
+            error_norms.append((error_norm_pos, error_norm_rot))
+
         # Check if we should try a different initial state
         if i > 0 and i % 199 == 0 and error_norm_pos > 0.1:
             current_init_state_idx = (current_init_state_idx + 1) % len(initial_states)
@@ -196,6 +254,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
         prev_pos_arm = next_pos_arm.copy()
         prev_pos = arms_to_fullqpos(model, data, prev_pos_arm, leftside=leftside)
 
+        
         jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
 
@@ -218,8 +277,6 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
         next_pos_arm = slice_dofs(model, data, next_pos, leftside)
         next_pos_arm = next_pos_arm.flatten()
 
-    
-
         if i % 88 == 0:
             # Calculate the row-reduced echelon form (RREF) of the Jacobian
             # This helps analyze the linear independence of the Jacobian rows
@@ -239,7 +296,17 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
             logger.info(f"Converged in {i} iterations")
             logger.info(f"Final end effector position: {error_norm_pos}")
             logger.info(f"Final orientation error norm: {error_norm_rot}")
+            
+            # Save tracking data to CSV if debug is enabled
+            if debug and arm_positions:
+                save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=True)
+            
             return next_pos, error_norm_pos, error_norm_rot
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f}")
+    
+    # Save tracking data to CSV even if we didn't converge
+    if debug and arm_positions:
+        save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
+    
     return next_pos, error_norm_pos, error_norm_rot
