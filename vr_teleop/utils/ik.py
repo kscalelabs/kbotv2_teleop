@@ -114,7 +114,12 @@ def orientation_error(target_quat, current_quat):
     dq = np.zeros(4)
     mujoco.mju_mulQuat(dq, target_quat, cur_quat_conj)
 
-    dq = dq / np.linalg.norm(dq)
+    # Add a small epsilon to prevent division by zero
+    norm = np.linalg.norm(dq)
+    if norm < 1e-10:  # Check if norm is very small
+        return np.zeros(3)  # Return zero error if quaternions are nearly identical
+        
+    dq = dq / norm
     if dq[0] < 0:
         dq = -dq
     return 2 * dq[1:4]

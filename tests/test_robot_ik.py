@@ -6,7 +6,7 @@ import pytest
 # Define path to URDF
 urdf_path = "vr_teleop/kbot_urdf/scene.mjcf"
 
-def run_ik_test(arm_qpos, leftside=True):
+def run_ik_test(arm_qpos, leftside):
     """Helper function to run an IK test with the given arm position"""
     kbotv2 = KBot_Robot(urdf_path, gravity_enabled=False, timestep=0.001)
     ans_qpos = kbotv2.convert_armqpos_to_fullqpos(arm_qpos, leftside=leftside)
@@ -25,6 +25,7 @@ def run_ik_test(arm_qpos, leftside=True):
         kbotv2_for_ik.model, kbotv2_for_ik.data, target_pos, target_ort, initial_states, leftside
     )
     kbotv2.ik_test_set(target_pos, target_ort, calc_qpos, ans_qpos, initial_states)
+    kbotv2.reset()
 
     logger.info(f"Error norm position: {error_norm_pos}, Error norm rotation: {error_norm_rot}")
     assert error_norm_pos < 0.01 and error_norm_rot < 0.01

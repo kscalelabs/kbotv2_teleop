@@ -75,15 +75,14 @@ class MuJoCo_Robot:
 
 class KBot_Robot(MuJoCo_Robot):
     def __init__(self, urdf_path, gravity_enabled, timestep):
-        super().__init__(urdf_path, gravity_enabled, timestep)  # Make sure to call the parent class constructor
+        super().__init__(urdf_path, gravity_enabled, timestep)
         self.target_pos = None
         self.target_ort = None
         self.calc_qpos = None
         self.ans_qpos = None
         self.initial_states = None
         
-        self.ans_qpos = None  # You might want to define this somewhere
-        self.ee_name = 'KB_C_501X_Bayonet_Adapter_Hard_Stop_2'
+        self.ans_qpos = None 
 
     def ik_test_set(self, target_pos, target_ort, calc_qpos, ans_qpos=None, initial_states=None):
         self.target_pos = target_pos
@@ -91,6 +90,17 @@ class KBot_Robot(MuJoCo_Robot):
         self.calc_qpos = calc_qpos
         self.ans_qpos = ans_qpos
         self.initial_states = initial_states
+    
+    def set_iksolve_side(self, leftside: bool):
+        """
+        Only used for logs during keyboard callbacks.
+        """
+        self.leftside = leftside
+
+        if leftside:
+            self.ee_name =  'KB_C_501X_Bayonet_Adapter_Hard_Stop_2'
+        else:
+            self.ee_name =  'KB_C_501X_Bayonet_Adapter_Hard_Stop'
     
     def key_callback(self, key):
         """
@@ -113,7 +123,7 @@ class KBot_Robot(MuJoCo_Robot):
             self.logger.info(f"End effector position: {self.data.body(self.ee_name).xpos}")
             self.logger.info(f"End effector orientation: {self.data.body(self.ee_name).xquat}")
         elif keycode == 'P' and self.initial_states is not None:
-            self.data.qpos = self.convert_armqpos_to_fullqpos(self.initial_states, True)
+            self.data.qpos = self.convert_armqpos_to_fullqpos(self.initial_states, self.leftside)
             mujoco.mj_forward(self.model, self.data)
             self.logger.info('Teleported to Optimization initial condition')
         elif keycode == "O" and self.viewer_ref:
@@ -154,7 +164,7 @@ class KBot_Robot(MuJoCo_Robot):
                 qpos_index = self.model.jnt_qposadr[joint_id]
                 joint_indices.append(qpos_index)
             else:
-                print(f"Warning: Joint '{key}' not found in model")
+                self.logger.warning(f"During Get Arm Qpos: Joint '{key}' not found in model")
         
         joint_positions = np.array([self.data.qpos[idx] for idx in joint_indices])
         return joint_positions
@@ -198,7 +208,7 @@ class KBot_Robot(MuJoCo_Robot):
                 
                 centered_positions.append(median_position)
             else:
-                print(f"Warning: Joint '{key}' not found in model")
+                self.logger.warning(f"During Initial Condition Setting: Joint '{key}' not found in model")
                 centered_positions.append(0.0)  # Default value if joint not found
         
         return np.array(centered_positions)
