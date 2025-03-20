@@ -2,12 +2,11 @@ import mujoco
 import mujoco.viewer
 import time
 import numpy as np
-from vr_teleop.utils.mujoco_helper import *
 import logging
 from vr_teleop.utils.logging import setup_logger
 
 logger = setup_logger(__name__)
-logger.setLevel(logging.DEBUG) #.DEBUG .INFO
+logger.setLevel(logging.INFO) #.DEBUG .INFO
 
 pi = np.pi
 
@@ -157,9 +156,10 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     for i in range(max_iteration):
         ee_pos, ee_rot = forward_kinematics(model, data, next_pos_arm, leftside=leftside)
         error = np.subtract(target_pos, ee_pos)
-        error_norm = np.linalg.norm(error)
+        error_norm_pos = np.linalg.norm(error)\
 
         error_rot = orientation_error(target_ort, ee_rot)
+        error_norm_rot = np.linalg.norm(error_rot)
 
         prev_pos_arm = next_pos_arm.copy()
         prev_pos = arms_to_fullqpos(model, data, prev_pos_arm, leftside=leftside)
@@ -190,7 +190,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
             # This helps analyze the linear independence of the Jacobian rows
             # and identify potential singularities
             logger.debug(f"Rank is: {np.linalg.matrix_rank(jacp)}")
-            logger.debug(f"Iteration {i}, Error: {error}, Error norm: {error_norm:.6f}")
+            logger.debug(f"Iteration {i}, Error: {error}, Error norm: {error_norm_pos:.6f}")
             logger.debug(f"Jacobian (position): {jacp}, and the Jacobian Transpose: {jacp.T}")
             logger.debug(f"Jacobian Transpose * Error * Alpha (0.8): {np.linalg.norm(delta_q)}, full: {delta_q}")
             jac_det = np.linalg.det(jacp @ jacp.T)
@@ -200,9 +200,11 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
             logger.debug(f"Current joints: {next_pos_arm}")
             # breakpoint()
 
-        if error_norm < tol:
+        if error_norm_pos < tol and error_norm_rot < tol:
             logger.info(f"Converged in {i} iterations")
-            return next_pos
+            logger.info(f"Final end effector position: {error_norm_pos}")
+            logger.info(f"Final orientation error norm: {error_norm_rot}")
+            return next_pos, error_norm_pos, error_norm_rot
     
-    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm:.6f}")
-    return next_pos
+    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f}")
+    return next_pos, error_norm_pos, error_norm_rot

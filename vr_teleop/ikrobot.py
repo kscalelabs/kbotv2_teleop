@@ -104,14 +104,12 @@ class KBot_Robot(MuJoCo_Robot):
             self.data.qpos = self.calc_qpos
             mujoco.mj_forward(self.model, self.data)
             self.logger.info("Teleported to Calculated Position")
-            np.savetxt('./vr_teleop/data/calculated_qpos.txt', self.calc_qpos)
             self.logger.info(f"End effector position: {self.data.body(self.ee_name).xpos}")
             self.logger.info(f"End effector orientation: {self.data.body(self.ee_name).xquat}")
         elif keycode == 'V' and self.ans_qpos is not None:
             self.data.qpos = self.ans_qpos
             mujoco.mj_forward(self.model, self.data)
             self.logger.info("Teleported to Answer Position")
-            np.savetxt('./vr_teleop/data/ans_qpos.txt', self.ans_qpos)
             self.logger.info(f"End effector position: {self.data.body(self.ee_name).xpos}")
             self.logger.info(f"End effector orientation: {self.data.body(self.ee_name).xquat}")
         elif keycode == 'P' and self.initial_states is not None:

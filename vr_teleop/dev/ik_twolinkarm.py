@@ -3,7 +3,6 @@ import mujoco.viewer
 import time
 import numpy as np
 import logging
-from vr_teleop.utils.mujoco_helper import *
 from vr_teleop.utils.logging import setup_logger
 
 
