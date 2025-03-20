@@ -15,7 +15,13 @@ kbotv2 = KBot_Robot(urdf_path, gravity_enabled=False,timestep=0.001)
 # ans_qpos = kbotv2.convert_armqpos_to_fullqpos([2.5, -1.6, -1.7, -2.5, -1.7], leftside=True) #0.015
 # ans_qpos = kbotv2.convert_armqpos_to_fullqpos([-2.0, -0.5, 1.7, -1.0, 0.5], leftside=True) #0.24
 # ans_qpos = kbotv2.convert_armqpos_to_fullqpos([-2.5, 1.6, 1.7, 2.3, 1.7], leftside=False) #0.015
-ans_qpos = kbotv2.convert_armqpos_to_fullqpos([2.0, 0.5, -1.7, 1.0, -0.5], leftside=False) #0.24
+# ans_qpos = kbotv2.convert_armqpos_to_fullqpos([2.0, 0.5, -1.7, 1.0, -0.5], leftside=False) #0.24
+
+
+# [2.5, -1.6, -1.7, -2.5, -1.7]
+# [-2.0, -0.5, 1.7, -1.0, 0.5]
+# [-2.0, 1.0, 1.0, 2.0, 1.0]
+ans_qpos = kbotv2.convert_armqpos_to_fullqpos([-2.5, 1.6, 1.7, 2.5, 1.7], leftside=False) #0.24
 leftside = False
 #*----- FAILING TESTS
 
@@ -32,11 +38,17 @@ if leftside:
 else:
     ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop"
 
+if leftside:
+    initial_states = np.array([0.2, -0.5, -1.5, -0.5, 0])
+else:
+    # initial_states = np.array([-0.2, 0.5, -1.5, 0.5, 0])
+    initial_states = np.array([0, 0, -1.5, 0.5, 0])
+
+
 kbotv2.set_qpos(ans_qpos)
 target_pos = kbotv2.data.body(ee_name).xpos.copy()
 target_ort = kbotv2.data.body(ee_name).xquat.copy()
 # initial_states = kbotv2.get_limit_center(leftside=leftside)
-initial_states = np.array([0, 0, -1.5, 0.5, 0])
 
 # temp = kbotv2.convert_armqpos_to_fullqpos(initial_states, leftside=False)
 # kbotv2.set_qpos(temp)

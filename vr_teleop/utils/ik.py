@@ -146,7 +146,7 @@ def forward_kinematics(model, data, joint_angles, leftside: bool):
 
 
 def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftside: bool):
-    max_iteration = 10000;
+    max_iteration = 1000;
     tol = 0.01;
     step_size = 0.8
     damping = 0.5
