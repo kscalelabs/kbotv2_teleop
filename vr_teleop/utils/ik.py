@@ -11,6 +11,12 @@ logger.setLevel(logging.DEBUG) #.DEBUG .INFO
 
 pi = np.pi
 
+r_kinematic_chain = ["YOKE_STOP_INNER", "RS03_5", "R_Bicep_Lower_Drive", "R_Forearm_Upper_Structural", "KB_C_501X_Bayonet_Adapter_Hard_Stop"]
+l_kinematic_chain = ["YOKE_STOP_INNER_2", "RS03_6", "L_Bicep_Lower_Drive", "L_Forearm_Upper_Drive", "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"]
+
+r_end_effector = ["KB_C_501X_Bayonet_Adapter_Hard_Stop"]
+l_end_effector = ["KB_C_501X_Bayonet_Adapter_Hard_Stop_2"]
+
 
 # * IK LOGIC
 def joint_limit_clamp(model, full_qpos):
@@ -26,6 +32,82 @@ def joint_limit_clamp(model, full_qpos):
                 # logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
     
     return full_qpos
+
+def arms_to_fullqpos(model, data, inputqloc: dict, leftside: bool):
+        moves = {}
+
+        newqpos = data.qpos.copy()
+
+        if leftside:
+            moves = {
+                "left_shoulder_pitch_03": inputqloc[0],
+                "left_shoulder_roll_03": inputqloc[1],
+                "left_shoulder_yaw_02": inputqloc[2],
+                "left_elbow_02": inputqloc[3],
+                "left_wrist_02": inputqloc[4]
+            }
+        else:
+            moves = {
+                "right_shoulder_pitch_03": inputqloc[0],
+                "right_shoulder_roll_03": inputqloc[1],
+                "right_shoulder_yaw_02": inputqloc[2],
+                "right_elbow_02": inputqloc[3],
+                "right_wrist_02": inputqloc[4]
+            }
+
+        for key, value in moves.items():
+            joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, key)
+            qpos_index = model.jnt_qposadr[joint_id]
+
+            if model.jnt_type[joint_id] != 3:  # 3 is for hinge joints (1 DOF)
+                raise ValueError(f"Joint {key} is not a hinge joint. This function only works with hinge joints (1 DOF).")
+                return 
+            if joint_id >= 0:
+                newqpos[qpos_index] = value
+        
+        return newqpos
+
+def slice_dofs(model, data, input_list, leftside: bool):
+    if len(input_list.shape) == 1:
+        input_list = input_list.reshape(1, -1)
+
+    if leftside:
+        tjoints = [
+            "left_shoulder_pitch_03",
+            "left_shoulder_roll_03",
+            "left_shoulder_yaw_02",
+            "left_elbow_02",
+            "left_wrist_02"
+        ]
+    else:
+        tjoints = [
+            "right_shoulder_pitch_03",
+            "right_shoulder_roll_03",
+            "right_shoulder_yaw_02",
+            "right_elbow_02",
+            "right_wrist_02"
+        ]
+    
+    joint_indices = []
+    
+    for key in tjoints:
+        joint_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, key)
+        if joint_id >= 0:  # Check if joint exists
+            qpos_index = model.jnt_qposadr[joint_id]
+            joint_indices.append(qpos_index)
+        else:
+            print(f"Warning: Joint '{key}' not found in model")
+
+    x_shape = input_list.shape[0]
+    num_joints = len(joint_indices)
+    result = np.zeros((x_shape, num_joints))
+    
+    for i in range(x_shape):
+        for j, joint_idx in enumerate(joint_indices):
+            result[i, j] = input_list[i, joint_idx]
+
+    return result
+
 
 def orientation_error(target_quat, current_quat):
     cur_quat_conj = np.zeros(4)
@@ -73,7 +155,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     next_pos_arm = initialstate.copy()
     
     for i in range(max_iteration):
-        ee_pos, ee_rot = forward_kinematics(next_pos_arm, leftside=leftside)
+        ee_pos, ee_rot = forward_kinematics(model, data, next_pos_arm, leftside=leftside)
         error = np.subtract(target_pos, ee_pos)
         error_norm = np.linalg.norm(error)
 
@@ -99,7 +181,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
         
         next_pos = prev_pos + delta_q * step_size
 
-        next_pos = joint_limit_clamp(next_pos)
+        next_pos = joint_limit_clamp(model, next_pos)
         next_pos_arm = slice_dofs(model, data, next_pos, leftside)
         next_pos_arm = next_pos_arm.flatten()
 
@@ -124,30 +206,3 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm:.6f}")
     return next_pos
-
-# # startingpos = get_arm_qpos(model, data, True, True)
-# # startingpos = arms_to_fullqpos(model, data, startingpos.flatten(), True)
-# initial_states = get_arm_qpos(model, data, leftside=True, tolimitcenter=True)
-# # initial_states = np.array([0, 0, 0, -0.35, 0])
-# # initial_states = np.array([0, 0, 0, 0, 0])
-
-# calc_qpos = inverse_kinematics(target, target_ort, initial_states, leftside=True)
-
-
-# viewer_ref = []
-
-# with mujoco.viewer.launch_passive(model, data, key_callback=key_cb) as viewer:
-
-#     while viewer.is_running():
-#         viewer_ref.append(viewer)
-#         mujoco.mj_step(model, data)
-#         sim_time += model.opt.timestep
-#         viewer.sync()
-
-#         target_time += model.opt.timestep
-#         current_time = time.time()
-#         if target_time - current_time > 0:
-#             time.sleep(target_time - current_time)
-
-
-

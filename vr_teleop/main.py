@@ -6,7 +6,7 @@ import json
 from .vr_cont import process_message
 from .utils.logging import setup_logger
 from .robot_cont import enable_actuators, disable_actuators
-from .actuator_list import ACTUATOR_LIST_SIM, ACTUATOR_LIST_REAL
+from .utils.actuator_list import ACTUATOR_LIST_SIM, ACTUATOR_LIST_REAL
 
 
 logger = setup_logger(__name__)

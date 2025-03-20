@@ -4,7 +4,6 @@ import time
 import numpy as np
 import logging
 from vr_teleop.utils.logging import setup_logger
-from vr_teleop.utils.mujoco_helper import debug_get_ee_pos
 
 # Set up logger
 logger = setup_logger(__name__)
