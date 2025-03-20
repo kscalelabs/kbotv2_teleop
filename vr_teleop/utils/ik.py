@@ -120,6 +120,7 @@ def orientation_error(target_quat, current_quat):
     # Add a small epsilon to prevent division by zero
     norm = np.linalg.norm(dq)
     if norm < 1e-10:  # Check if norm is very small
+        logger.warning('quat norm is small')
         return np.zeros(3)  # Return zero error if quaternions are nearly identical
         
     dq = dq / norm
@@ -152,29 +153,48 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     damping = 0.5
 
     rot_w = 0.6
-    trans_w = 0.8    
+    trans_w = 1  
 
-
+    # Define multiple initial states to try when stuck
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
+        initial_states = [
+            initialstate.copy(),
+            np.array([0, 0, 1.5, -0.5, np.random.uniform(-1.745329, 1.745329)]),
+            np.array([2, -1.3, -1.5, -0.5, np.random.uniform(-1.745329, 1.745329)]), 
+            np.array([[2, -1.3, 1.5, -0.5, np.random.uniform(-1.745329, 1.745329)]])
+        ]
     else:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop"
+        initial_states = [
+            initialstate.copy(),
+            np.array([0, 0, -1.5, 0.5, np.random.uniform(-1.745329, 1.745329)]),
+            np.array([-2, 1.3, -1.5, 0.5, np.random.uniform(-1.745329, 1.745329)]),
+            np.array([-2, 1.3, 1.5, 0.5, np.random.uniform(-1.745329, 1.745329)])
+        ]
 
     mujoco.mj_forward(model, data)
     
-    next_pos_arm = initialstate.copy()
+    current_init_state_idx = 0
+    next_pos_arm = initial_states[current_init_state_idx].copy()
     
     for i in range(max_iteration):
         ee_pos, ee_rot = forward_kinematics(model, data, next_pos_arm, leftside=leftside)
         error = np.subtract(target_pos, ee_pos)
-        error_norm_pos = np.linalg.norm(error)\
+        error_norm_pos = np.linalg.norm(error)
 
         error_rot = orientation_error(target_ort, ee_rot)
         error_norm_rot = np.linalg.norm(error_rot)
 
+        # Check if we should try a different initial state
+        if i > 0 and i % 199 == 0 and error_norm_pos > 0.1:
+            current_init_state_idx = (current_init_state_idx + 1) % len(initial_states)
+            logger.info(f"Switching to initial state {current_init_state_idx} after {i} iterations due to high error: {error_norm_pos:.6f}")
+            next_pos_arm = initial_states[current_init_state_idx].copy()
+            continue
+
         prev_pos_arm = next_pos_arm.copy()
         prev_pos = arms_to_fullqpos(model, data, prev_pos_arm, leftside=leftside)
-
 
         jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
