@@ -4,4 +4,7 @@
 `mjpython -m vr_teleop.ik`
 
 To run tests
-`python -m pytest tests/`
+`pytest tests/test_robot_ik.py`
+
+To run an individual test
+`pytest tests/test_robot_ik.py::test_hard_test_limit2 -v`

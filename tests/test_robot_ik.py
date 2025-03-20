@@ -20,12 +20,6 @@ def run_ik_test(arm_qpos, leftside):
     target_pos = kbotv2.data.body(ee_name).xpos.copy()
     target_ort = kbotv2.data.body(ee_name).xquat.copy()
     initial_states = kbotv2.get_limit_center(leftside=leftside)
-    # breakpoint()
-    # if leftside:
-    #     initial_states = np.array([0.2, -0.5, -1.5, -0.5, 0])
-    # else:
-    #     initial_states = np.array([-0.2, 0.5, -1.5, 0.5, 0])
-
     kbotv2_for_ik = KBot_Robot(urdf_path, gravity_enabled=False, timestep=0.001)
     calc_qpos, error_norm_pos, error_norm_rot = inverse_kinematics(
         kbotv2_for_ik.model, kbotv2_for_ik.data, target_pos, target_ort, initial_states, leftside
@@ -47,7 +41,7 @@ def test_left_edge_downward():
     run_ik_test([0, -1.6, 0, -2.5, 0], leftside=True)
 
 def test_left_edge_extended():
-    run_ik_test([2.5, -1.6, -1.7, -2.5, -1.7], leftside=True)
+    run_ik_test([2.47, -1.57, -1.67, -2.45, -1.68], leftside=True)
 
 def test_left_edge_upward():
     run_ik_test([-2.0, -0.5, 1.7, -1.0, 0.5], leftside=True)
@@ -94,7 +88,7 @@ def test_right_edge_downward():
     run_ik_test([0, 1.6, 0, 2.5, 0], leftside=False)
 
 def test_right_edge_extended():
-    run_ik_test([-2.5, 1.6, 1.7, 2.5, 1.7], leftside=False)
+    run_ik_test([-2.47, 1.57, 1.67, 2.45, 1.68], leftside=False)
 
 def test_right_edge_upward():
     run_ik_test([2.0, 0.5, -1.7, 1.0, -0.5], leftside=False)
@@ -124,6 +118,23 @@ def test_right_workspace_high():
 def test_right_workspace_twisted():
     run_ik_test([-0.5, 0.6, 0.5, 1.5, -0.5], leftside=False)
 
+def test_right_joint_limit():
+    run_ik_test([-2.6, -0.48, -1.7, 0, -1.7], leftside=False)
+    
+def test_right_joint_limit2():
+    run_ik_test([2.0, 1.65, 1.7, 2.53, 1.7], leftside=False)
+
+def test_left_joint_limit():
+    run_ik_test([-2, -1.65, -1.74, -2.53, -1.74], leftside=True)
+
+def test_left_joint_limit2():
+    run_ik_test([2.6, 0.48, 1.74, 0, 1.74], leftside=True)
+
+def test_hard_test_limit():
+    run_ik_test([2.5, -1.6, -1.7, -2.5, -1.7], leftside=True)
+
+def test_hard_test_limit2():
+    run_ik_test([-2.5, 1.6, 1.7, 2.5, 1.7], leftside=False)
 
 
 
