@@ -29,6 +29,9 @@ def joint_limit_clamp(model, full_qpos):
             if prev_value != new_value:
                 joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or f"joint_{i}"
                 logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
+                if joint_name == "right_elbow_02":
+                    logger.warning("elbowing was clamped")
+                    # breakpoint()
     
     return full_qpos
 
@@ -148,6 +151,9 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     step_size = 0.8
     damping = 0.5
 
+    rot_w = 0.6
+    trans_w = 0.8    
+
 
     if leftside:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
@@ -178,17 +184,21 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
 
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
         
+
         #*Term for Translation:
-        J_inv = np.linalg.inv(jacp.T @ jacp + damping * I) @ jacp.T
+        J_inv = np.linalg.inv( jacp.T @ jacp + damping * I) @ jacp.T
         #*Term for Rotation:
         JR_inv = np.linalg.inv(jacr.T @ jacr + damping * I) @ jacr.T
-        delta_q = J_inv @ error + JR_inv @ error_rot
+        
+        delta_q =  trans_w*(J_inv @ error) + rot_w*(JR_inv @ error_rot)
         
         next_pos = prev_pos + delta_q * step_size
 
         next_pos = joint_limit_clamp(model, next_pos)
         next_pos_arm = slice_dofs(model, data, next_pos, leftside)
         next_pos_arm = next_pos_arm.flatten()
+
+    
 
         if i % 88 == 0:
             # Calculate the row-reduced echelon form (RREF) of the Jacobian

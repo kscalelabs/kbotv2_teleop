@@ -2,6 +2,7 @@ from vr_teleop.utils.ik import *
 from vr_teleop.ikrobot import KBot_Robot
 import numpy as np
 import pytest
+logger.setLevel(logging.INFO) #.DEBUG .INFO
 
 # Define path to URDF
 urdf_path = "vr_teleop/kbot_urdf/scene.mjcf"
@@ -19,6 +20,11 @@ def run_ik_test(arm_qpos, leftside):
     target_pos = kbotv2.data.body(ee_name).xpos.copy()
     target_ort = kbotv2.data.body(ee_name).xquat.copy()
     initial_states = kbotv2.get_limit_center(leftside=leftside)
+    # breakpoint()
+    # if leftside:
+    #     initial_states = np.array([0.2, -0.5, -1.5, -0.5, 0])
+    # else:
+    #     initial_states = np.array([-0.2, 0.5, -1.5, 0.5, 0])
 
     kbotv2_for_ik = KBot_Robot(urdf_path, gravity_enabled=False, timestep=0.001)
     calc_qpos, error_norm_pos, error_norm_rot = inverse_kinematics(

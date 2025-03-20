@@ -2,6 +2,7 @@ from vr_teleop.utils.ik import *
 from vr_teleop.ikrobot import KBot_Robot
 import numpy as np
 
+logger.setLevel(logging.DEBUG) #.DEBUG .INFO
 
 # Define path to URDF
 urdf_path = "vr_teleop/kbot_urdf/scene.mjcf"
@@ -34,7 +35,8 @@ else:
 kbotv2.set_qpos(ans_qpos)
 target_pos = kbotv2.data.body(ee_name).xpos.copy()
 target_ort = kbotv2.data.body(ee_name).xquat.copy()
-initial_states = kbotv2.get_limit_center(leftside=leftside)
+# initial_states = kbotv2.get_limit_center(leftside=leftside)
+initial_states = np.array([0, 0, -1.5, 0.5, 0])
 
 # temp = kbotv2.convert_armqpos_to_fullqpos(initial_states, leftside=False)
 # kbotv2.set_qpos(temp)
