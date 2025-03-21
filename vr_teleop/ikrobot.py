@@ -150,7 +150,7 @@ class KBot_Robot(MuJoCo_Robot):
         
         ee_pos = self.data.body(ee_name).xpos.copy()
         ee_orientation = self.data.body(ee_name).xquat.copy()
-        
+
         return ee_pos, ee_orientation
 
     def get_arm_qpos(self, leftside: bool):
@@ -297,6 +297,27 @@ class KBot_Robot(MuJoCo_Robot):
                 arm_positions[key] = 0.0  # Default value if joint not found
         
         return arm_positions
+    
+    def qpos_idx_to_jointname(self):
+        qpos_to_joint = {}
+        
+        # Iterate through all joints in the model
+        for i in range(self.model.njnt):
+            joint_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, i)
+            qpos_index = self.model.jnt_qposadr[i]
+            
+            # For slide and hinge joints (1 DOF)
+            if self.model.jnt_type[i] in [1, 3]:  # 1=slide, 3=hinge
+                qpos_to_joint[qpos_index] = joint_name
+            # For ball joints (3 DOF) and free joints (7 DOF), multiple qpos indices map to one joint
+            elif self.model.jnt_type[i] == 2:  # ball joint
+                for offset in range(4):  # quaternion (4 values)
+                    qpos_to_joint[qpos_index + offset] = f"{joint_name}[{offset}]"
+            elif self.model.jnt_type[i] == 0:  # free joint
+                for offset in range(7):  # position (3) + quaternion (4)
+                    qpos_to_joint[qpos_index + offset] = f"{joint_name}[{offset}]"
+        
+        return qpos_to_joint
 
 
 
