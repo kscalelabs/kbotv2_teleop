@@ -21,8 +21,9 @@ def run_ik_test(arm_qpos, leftside):
     target_ort = kbotv2.data.body(ee_name).xquat.copy()
     initial_states = kbotv2.get_limit_center(leftside=leftside)
     kbotv2_for_ik = KBot_Robot(urdf_path, gravity_enabled=False, timestep=0.001)
-    calc_qpos, error_norm_pos, error_norm_rot = inverse_kinematics(
+    pos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(
         kbotv2_for_ik.model, kbotv2_for_ik.data, target_pos, target_ort, leftside)
+    calc_qpos = kbotv2_for_ik.convert_armqpos_to_fullqpos(pos_arm, leftside)
     kbotv2.ik_test_set(target_pos, target_ort, calc_qpos, ans_qpos, initial_states)
     kbotv2.reset()
 

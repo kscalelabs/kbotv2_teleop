@@ -330,7 +330,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
                 save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=True)
             
             mujoco.mj_resetData(model, data)
-            return next_pos, error_norm_pos, error_norm_rot
+            return next_pos_arm, error_norm_pos, error_norm_rot
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f} and rot: {error_norm_rot}")
     
@@ -339,4 +339,4 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
     
     mujoco.mj_resetData(model, data)
-    return next_pos, error_norm_pos, error_norm_rot
+    return next_pos_arm, error_norm_pos, error_norm_rot
