@@ -203,7 +203,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
     step_size = 0.8
     damping = 0.5
 
-    rot_w = 0.6
+    rot_w = 0.7
     trans_w = 1  
 
     # For logging to file
@@ -221,17 +221,31 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
         initial_states = [
             initialstate.copy(),
-            np.array([0, 0, 1.5, -0.5, np.random.uniform(-1.745329, 1.745329)]),
-            np.array([2, -1.3, -1.5, -0.5, np.random.uniform(-1.745329, 1.745329)]), 
-            np.array([[2, -1.3, 1.5, -0.5, np.random.uniform(-1.745329, 1.745329)]])
+            np.array([0, 0, 1.5, -0.5, 0]),
+            np.array([2, -1.3, -1.5, -0.5, 0]), 
+            np.array([[2, -1.3, 1.5, -0.5, 0]]),
+            # np.array([
+            #     np.random.uniform(-2.094395, 2.617994),  # left_shoulder_pitch
+            #     np.random.uniform(-1.658063, 0.488692),  # left_shoulder_roll
+            #     np.random.uniform(-1.745329, 1.745329),  # left_shoulder_yaw
+            #     np.random.uniform(-2.530727, 0),         # left_elbow
+            #     np.random.uniform(-1.745329, 1.745329)   # left_wrist
+            # ])
         ]
     else:
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop"
         initial_states = [
             initialstate.copy(),
-            np.array([0, 0, -1.5, 0.5, np.random.uniform(-1.745329, 1.745329)]),
-            np.array([-2, 1.3, -1.5, 0.5, np.random.uniform(-1.745329, 1.745329)]),
-            np.array([-2, 1.3, 1.5, 0.5, np.random.uniform(-1.745329, 1.745329)])
+            np.array([0, 0, -1.5, 0.5, 0]),
+            np.array([-2, 1.3, -1.5, 0.5, 0]),
+            np.array([-2, 1.3, 1.5, 0.5, 0]),
+            # np.array([
+            #     np.random.uniform(-2.617994, 2.094395),  # right_shoulder_pitch
+            #     np.random.uniform(-0.488692, 1.658063),  # right_shoulder_roll
+            #     np.random.uniform(-1.745329, 1.745329),  # right_shoulder_yaw
+            #     np.random.uniform(0, 2.530727),          # right_elbow
+            #     np.random.uniform(-1.745329, 1.745329)   # right_wrist
+            # ])
         ]
 
     mujoco.mj_forward(model, data)
@@ -254,10 +268,11 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
             error_norms.append((error_norm_pos, error_norm_rot))
 
         # Check if we should try a different initial state
-        if i > 0 and i % 199 == 0 and error_norm_pos > 0.1:
+        if i > 0 and i % (max_iteration // len(initial_states)) == 0 and error_norm_pos > 0.1:
             current_init_state_idx = (current_init_state_idx + 1) % len(initial_states)
             logger.info(f"Switching to initial state {current_init_state_idx} after {i} iterations due to high error: {error_norm_pos:.6f}")
             next_pos_arm = initial_states[current_init_state_idx].copy()
+            next_pos = arms_to_fullqpos(model, data, next_pos_arm.flatten(), leftside)
             continue
         
 
@@ -317,7 +332,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
             mujoco.mj_resetData(model, data)
             return next_pos, error_norm_pos, error_norm_rot
     
-    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f}")
+    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f} and rot: {error_norm_rot}")
     
     # Save tracking data to CSV even if we didn't converge
     if debug and arm_positions:

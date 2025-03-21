@@ -103,7 +103,7 @@ def apply_pose_delta(current_pos, current_quat, delta_pos=[0, 0, 0], delta_euler
 
 
 
-new_pos, new_quat = apply_pose_delta(lee_pos, lee_ort, [0.1, 0.1, 0.1], [0, 0, 0])
+new_pos, new_quat = apply_pose_delta(lee_pos, lee_ort, [0.3, 0.3, 0.5], [0, 0, 0])
 calc_qpos, error_norm_pos, error_norm_rot = inverse_kinematics(solver.model, solver.data, new_pos, new_quat, leftside=True)
 
 
@@ -113,10 +113,28 @@ all_angles, _ = motion_plan.get_waypoints()
 
 solver.set_qpos(all_angles[:, 1])
 
+# breakpoint()
 
-solver.run_viewer()
+def runThis(robot, sim_time):
+    # Keep track of the last solution index and the time it was applied
+    if not hasattr(runThis, "last_index"):
+        runThis.last_index = -1
+        runThis.last_change_time = 0
+    
+    # Calculate the current step based on 0.75-second intervals
+    current_step = int(sim_time / 0.2)
+    target_time = current_step * 0.2
+    
+    if sim_time > target_time and sim_time <= target_time + 0.01 and current_step > runThis.last_index:
+        next_index = runThis.last_index + 1
+        
+        if next_index < len(all_angles[1, :]):
+            print(f"Time: {sim_time:.2f}s - Moving to position {next_index}")
+            robot.set_qpos(all_angles[:, next_index])
+            
+            runThis.last_index = next_index
+            runThis.last_change_time = sim_time
 
 
-
-
+solver.run_viewer(runThis)
 
