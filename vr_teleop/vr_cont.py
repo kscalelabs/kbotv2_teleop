@@ -23,6 +23,8 @@ async def process_message(message):
         
         if 'controller' in data:
             controller = data['controller']
+
+            breakpoint()
             
             if controller not in ['left', 'right']:
                 raise ValueError("Controller must be 'left' or 'right'")

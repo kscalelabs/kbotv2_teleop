@@ -146,8 +146,6 @@ class KOS_KBot:
 
 
     async def activate(self):
-        self.kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
-
         disable_commands = []
         for cur_act in self.sim_act_list.keys():
             disable_commands.append(
@@ -171,8 +169,6 @@ class KOS_KBot:
         await asyncio.sleep(1)
 
     async def disable(kos_instance, planner):
-        kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
-
         disable_commands = []
         for cur_act in planner.sim_act_list.keys():
             disable_commands.append(

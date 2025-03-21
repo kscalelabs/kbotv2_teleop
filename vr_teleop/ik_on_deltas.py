@@ -108,8 +108,6 @@ async def send_to_kos(planner, kos_instance, all_angles, time_grid, sim=True):
 
 
 async def activate(kos_instance, planner):
-    await kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
-
     disable_commands = []
     for cur_act in KOS_KBot.get_sim_actuators().keys():
         disable_commands.append(
@@ -133,8 +131,6 @@ async def activate(kos_instance, planner):
     await asyncio.sleep(1)
 
 async def disable(kos_instance, planner):
-    await kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
-
     disable_commands = []
     for cur_act in KOS_KBot.get_sim_actuators().keys():
         disable_commands.append(
