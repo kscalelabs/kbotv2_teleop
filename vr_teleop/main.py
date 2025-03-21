@@ -52,11 +52,10 @@ async def kbot_control_loop(kos_instance, actuator_list, end_eff_locs, duration=
         current_time = time.time()
 
         #* ---- Main ---- *
-        # Add your control logic here
         state_response = await kos_instance.actuator.get_actuators_state(actuator_list.keys())
         current_joint_states = [state.position for state in state_response.states]
 
-        # next_joint_states = inverse_kinematics(arm_chain, current_joint_states, end_eff_locs)
+        # next_joint_states = inverse_kinematics(arm_chain, end_eff_locs)
 
         # planned_commands = motion_planning(current_joint_states, next_joint_states)
 

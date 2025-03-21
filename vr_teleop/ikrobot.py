@@ -45,7 +45,7 @@ class MuJoCo_Robot:
         mujoco.mj_resetData(self.model, self.data)
 
 
-    def run_viewer(self, custom_key_callback=None, sim_end_time=30):
+    def run_viewer(self, func_to_call=None, custom_key_callback=None, sim_end_time=30):
         #* Sim_end_time is duration in simulation time.
         self.sim_time = 0.0
         self.target_time = time.time()
@@ -67,6 +67,9 @@ class MuJoCo_Robot:
                 mujoco.mj_step(self.model, self.data)
                 self.sim_time += self.model.opt.timestep
                 viewer.sync()
+
+                if func_to_call:
+                    func_to_call(self, self.sim_time)
                 
                 self.target_time += self.model.opt.timestep
                 current_time = time.time()
@@ -74,7 +77,7 @@ class MuJoCo_Robot:
                     time.sleep(self.target_time - current_time)
 
 class KBot_Robot(MuJoCo_Robot):
-    def __init__(self, urdf_path, gravity_enabled, timestep):
+    def __init__(self, urdf_path, gravity_enabled=False, timestep=0.001):
         super().__init__(urdf_path, gravity_enabled, timestep)
         self.target_pos = None
         self.target_ort = None
@@ -139,7 +142,16 @@ class KBot_Robot(MuJoCo_Robot):
             self.viewer_ref[0].sync()
             self.logger.info("Toggled frame visualization")
 
-    
+    def get_ee_pos(self, leftside: bool):
+        if leftside:
+            ee_name = 'KB_C_501X_Bayonet_Adapter_Hard_Stop_2'
+        else:
+            ee_name = 'KB_C_501X_Bayonet_Adapter_Hard_Stop'
+        
+        ee_pos = self.data.body(ee_name).xpos.copy()
+        ee_orientation = self.data.body(ee_name).xquat.copy()
+        return ee_pos, ee_orientation
+
     def get_arm_qpos(self, leftside: bool):
         """
         Returns the current position of the arm joints, an array of lenght 5.

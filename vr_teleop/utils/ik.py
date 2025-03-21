@@ -9,7 +9,7 @@ import csv
 import os
 
 logger = setup_logger(__name__)
-logger.setLevel(logging.DEBUG) #.DEBUG .INFO
+logger.setLevel(logging.INFO) #.DEBUG .INFO
 
 pi = np.pi
 
@@ -33,7 +33,8 @@ def joint_limit_clamp(model, full_qpos):
                 joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or f"joint_{i}"
                 logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
                 if joint_name == "right_elbow_02":
-                    logger.warning("elbowing was clamped")
+                    pass
+                    # logger.warning("elbowing was clamped")
                     # breakpoint()
     
     return full_qpos
@@ -123,7 +124,7 @@ def orientation_error(target_quat, current_quat):
     # Add a small epsilon to prevent division by zero
     norm = np.linalg.norm(dq)
     if norm < 1e-10:  # Check if norm is very small
-        logger.warning('quat norm is small')
+        # logger.warning('quat norm is small')
         return np.zeros(3)  # Return zero error if quaternions are nearly identical
         
     dq = dq / norm
