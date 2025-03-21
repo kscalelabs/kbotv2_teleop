@@ -5,7 +5,7 @@ import websockets
 import time
 import numpy as np
 from pykos import KOS
-from vr_teleop.ikrobot import KBot_Robot
+from vr_teleop.mjRobot import MJ_KBot
 from vr_teleop.utils.motion_planning import Robot_Planner
 from vr_teleop.utils.ik import inverse_kinematics
 from .utils.logging import setup_logger
@@ -101,7 +101,7 @@ async def robot_consumer(command_queue, simulation_mode=True):
         # Setup robot and motion planner
         logger.info("[ROBOT] Initializing robot and motion planner")
         urdf_path = "vr_teleop/kbot_urdf/scene.mjcf"
-        solver = KBot_Robot(urdf_path)
+        solver = MJ_KBot(urdf_path)
         motion_plan = Robot_Planner(solver)
         
         # Get initial positions

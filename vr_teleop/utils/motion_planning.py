@@ -1,5 +1,5 @@
 import logging
-from vr_teleop.ikrobot import KBot_Robot
+from vr_teleop.mjRobot import MJ_KBot
 import mujoco
 import time
 import math
@@ -61,53 +61,6 @@ class Robot_Planner:
         #     45: "right_ankle_02"
         # }
 
-        self.sim_act_list = {
-            # actuator id, nn id, kp, kd, max_torque, flip_sign
-            11: Actuator(11, 1, 150.0, 8.0, 60.0, True, "left_shoulder_pitch_03"),
-            12: Actuator(12, 5, 150.0, 8.0, 60.0, False, "left_shoulder_roll_03"),
-            13: Actuator(13, 9, 50.0, 5.0, 17.0, False, "left_shoulder_yaw_02"),
-            14: Actuator(14, 13, 50.0, 5.0, 17.0, False, "left_elbow_02"),
-            15: Actuator(15, 17, 20.0, 2.0, 17.0, False, "left_wrist_02"),
-            21: Actuator(21, 3, 150.0, 8.0, 60.0, False, "right_shoulder_pitch_03"),
-            22: Actuator(22, 7, 150.0, 8.0, 60.0, True, "right_shoulder_roll_03"),
-            23: Actuator(23, 11, 50.0, 2.0, 17.0, True, "right_shoulder_yaw_02"),
-            24: Actuator(24, 15, 50.0, 5.0, 17.0, True, "right_elbow_02"),
-            25: Actuator(25, 19, 20.0, 2.0, 17.0, False, "right_wrist_02"),
-            # 31: Actuator(31, 0, 100.0, 6.1504, 80.0, True, "left_hip_pitch_04"),
-            # 32: Actuator(32, 4, 50.0, 11.152, 60.0, False, "left_hip_roll_03"),
-            # 33: Actuator(33, 8, 50.0, 11.152, 60.0, False, "left_hip_yaw_03"),
-            # 34: Actuator(34, 12, 100.0, 6.1504, 80.0, True, "left_knee_04"),
-            # 35: Actuator(35, 16, 20.0, 0.6, 17.0, False, "left_ankle_02"),
-            # 41: Actuator(41, 2, 100, 7.0, 80.0, False, "right_hip_pitch_04"),
-            # 42: Actuator(42, 6, 50.0, 11.152, 60.0, True, "right_hip_roll_03"),
-            # 43: Actuator(43, 10, 50.0, 11.152, 60.0, True, "right_hip_yaw_03"),
-            # 44: Actuator(44, 14, 100.0, 6.1504, 80.0, False, "right_knee_04"),
-            # 45: Actuator(45, 18, 20.0, 0.6, 17.0, True, "right_ankle_02"),
-        }
-
-        self.real_act_list = {
-            # actuator id, nn id, kp, kd, max_torque, flip_sign
-            11: Actuator(11, 1, 150.0, 8.0, 60.0, True, "left_shoulder_pitch_03"),
-            12: Actuator(12, 5, 150.0, 8.0, 60.0, False, "left_shoulder_roll_03"),
-            13: Actuator(13, 9, 50.0, 5.0, 17.0, False, "left_shoulder_yaw_02"),
-            14: Actuator(14, 13, 50.0, 5.0, 17.0, False, "left_elbow_02"),
-            15: Actuator(15, 17, 20.0, 2.0, 17.0, False, "left_wrist_02"),
-            21: Actuator(21, 3, 150.0, 8.0, 60.0, False, "right_shoulder_pitch_03"),
-            22: Actuator(22, 7, 150.0, 8.0, 60.0, True, "right_shoulder_roll_03"),
-            23: Actuator(23, 11, 50.0, 2.0, 17.0, True, "right_shoulder_yaw_02"),
-            24: Actuator(24, 15, 50.0, 5.0, 17.0, True, "right_elbow_02"),
-            25: Actuator(25, 19, 20.0, 2.0, 17.0, False, "right_wrist_02"),
-            # 31: Actuator(31, 0, 100.0, 6.1504, 80.0, True, "left_hip_pitch_04"),
-            # 32: Actuator(32, 4, 50.0, 11.152, 60.0, True, "left_hip_roll_03"),
-            # 33: Actuator(33, 8, 50.0, 11.152, 60.0, False, "left_hip_yaw_03"),
-            # 34: Actuator(34, 12, 200.0, 6.1504, 80.0, True, "left_knee_04"),
-            # 35: Actuator(35, 16, 50.0, 5, 17.0, True, "left_ankle_02"),
-            # 41: Actuator(41, 2, 100, 7.0, 80.0, False, "right_hip_pitch_04"),
-            # 42: Actuator(42, 6, 50.0, 11.152, 60.0, False, "right_hip_roll_03"),
-            # 43: Actuator(43, 10, 50.0, 11.152, 60.0, True, "right_hip_yaw_03"),
-            # 44: Actuator(44, 14, 200.0, 6.1504, 80.0, False, "right_knee_04"),
-            # 45: Actuator(45, 18, 50.0, 5, 17.0, False, "right_ankle_02"),
-        }
 
     def set_curangles(self, cur_angles):
         self.cur_angles = cur_angles

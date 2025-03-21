@@ -76,7 +76,7 @@ class MuJoCo_Robot:
                 if self.target_time - current_time > 0:
                     time.sleep(self.target_time - current_time)
 
-class KBot_Robot(MuJoCo_Robot):
+class MJ_KBot(MuJoCo_Robot):
     def __init__(self, urdf_path, gravity_enabled=False, timestep=0.001):
         super().__init__(urdf_path, gravity_enabled, timestep)
         self.target_pos = None

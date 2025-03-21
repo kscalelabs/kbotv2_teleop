@@ -3,8 +3,9 @@ import mujoco
 import time
 import math
 import numpy as np
-from vr_teleop.ikrobot import KBot_Robot
+from vr_teleop.mjRobot import MJ_KBot
 from vr_teleop.utils.motion_planning import Robot_Planner
+from vr_teleop.kosRobot import KOS_KBot
 from vr_teleop.utils.ik import *
 
 import asyncio
@@ -12,7 +13,7 @@ from pykos import KOS
 
 
 urdf_path = "vr_teleop/kbot_urdf/scene.mjcf"
-solver = KBot_Robot(urdf_path)
+solver = MJ_KBot(urdf_path)
 
 fullq = solver.convert_armqpos_to_fullqpos([-2.47, 1.57, 1.67, 2.45, 1.68], leftside=False)
 
@@ -45,17 +46,17 @@ async def send_to_kos(planner, kos_instance, all_angles, time_grid, sim=True):
     all_angles = np.degrees(all_angles)
     start_time = time.time()
 
-    all_actuators_ids = list(planner.sim_act_list.keys())
+    all_actuators_ids = list(KOS_KBot.get_sim_actuators().keys())
 
     if sim:
-        flip_sign_map = {actuator_id: planner.sim_act_list[actuator_id].flip_sign for actuator_id in  all_actuators_ids if actuator_id in planner.sim_act_list}
+        flip_sign_map = {actuator_id: KOS_KBot.get_sim_actuators()[actuator_id].flip_sign for actuator_id in  all_actuators_ids if actuator_id in KOS_KBot.get_sim_actuators()}
     else:
-        flip_sign_map = {actuator_id: planner.real_act_list[actuator_id].flip_sign for actuator_id in all_actuators_ids if actuator_id in planner.real_act_list}
+        flip_sign_map = {actuator_id: KOS_KBot.get_real_actuators()[actuator_id].flip_sign for actuator_id in all_actuators_ids if actuator_id in KOS_KBot.get_real_actuators()}
     
     # Store the mapping between actuator_id and corresponding joint index
     actuator_to_joint_idx = {}
     for i, actuator_id in enumerate(all_actuators_ids):
-        joint_name = planner.sim_act_list[actuator_id].joint_name
+        joint_name = KOS_KBot.get_sim_actuators()[actuator_id].joint_name
         for idx, joint in planner.idx_to_joint_map.items():
             if joint == joint_name:
                 actuator_to_joint_idx[actuator_id] = idx
@@ -102,15 +103,15 @@ async def send_to_kos(planner, kos_instance, all_angles, time_grid, sim=True):
     await asyncio.gather(*command_tasks)
 
     state_response = await kos_instance.actuator.get_actuators_state(all_actuators_ids)
-    for i, (actuator_id, state) in enumerate(zip(all_actuators_ids, state_response.states)):
-        logger.info(f"Final position of actuator {actuator_id}: {state.position} degrees")
+    # for i, (actuator_id, state) in enumerate(zip(all_actuators_ids, state_response.states)):
+    #     logger.info(f"Final position of actuator {actuator_id}: {state.position} degrees")
 
 
 async def activate(kos_instance, planner):
-    kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
+    await kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
 
     disable_commands = []
-    for cur_act in planner.sim_act_list.keys():
+    for cur_act in KOS_KBot.get_sim_actuators().keys():
         disable_commands.append(
                 kos_instance.actuator.configure_actuator(actuator_id=cur_act, torque_enabled=False)
             )
@@ -119,7 +120,7 @@ async def activate(kos_instance, planner):
     await asyncio.sleep(1)
 
     config_commands = []
-    for cur_act in planner.sim_act_list.values():
+    for cur_act in KOS_KBot.get_sim_actuators().values():
         config_commands.append(
             kos_instance.actuator.configure_actuator(
                 actuator_id=cur_act.actuator_id,
@@ -132,10 +133,10 @@ async def activate(kos_instance, planner):
     await asyncio.sleep(1)
 
 async def disable(kos_instance, planner):
-    kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
+    await kos_instance.sim.reset(initial_state={"qpos": [0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.0] + [0.0] * 20})
 
     disable_commands = []
-    for cur_act in planner.sim_act_list.keys():
+    for cur_act in KOS_KBot.get_sim_actuators().keys():
         disable_commands.append(
                 kos_instance.actuator.configure_actuator(actuator_id=cur_act, torque_enabled=False)
             )
