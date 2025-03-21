@@ -147,7 +147,7 @@ async def disable(kos_instance, planner):
 
 
 async def run_kos():
-    async with KOS(ip="localhost", port=50051) as sim_kos:
+    async with KOS(ip="10.33.12.161", port=50051) as sim_kos:
         await activate(sim_kos, motion_plan)
         await send_to_kos(motion_plan, sim_kos, planned_angles, time_grid)
         await asyncio.sleep(2)
@@ -174,7 +174,7 @@ planned_angles, _ , time_grid = motion_plan.get_waypoints()
 
 
 async def run_kos():
-    async with KOS(ip="localhost", port=50051) as sim_kos:
+    async with KOS(ip="10.33.12.161", port=50051) as sim_kos:
         await activate(sim_kos, motion_plan)
         await send_to_kos(motion_plan, sim_kos, planned_angles, time_grid)
         await asyncio.sleep(2)

@@ -8,7 +8,8 @@ setup(
         "websockets",
         "mujoco",
         "numpy",
-        "pykos"
+        "pykos",
+        "scipy"
         # Add other dependencies here
     ],
 )
