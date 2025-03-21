@@ -138,15 +138,16 @@ def forward_kinematics(model, data, joint_angles, leftside: bool):
     Compute forward kinematics of given joint angles by MuJoCo
     Go to position and read position
     """
+    mujoco.mj_resetData(model, data)
     ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2" if leftside else "KB_C_501X_Bayonet_Adapter_Hard_Stop"
-    newpos = arms_to_fullqpos(model, data, joint_angles.flatten(), leftside)
-    data.qpos = newpos
+    data.qpos = joint_angles
     mujoco.mj_forward(model, data)
 
     pos = data.body(ee_name).xpos.copy()
 
     ort = data.body(ee_name).xquat.copy()
 
+    mujoco.mj_resetData(model, data)
     return pos, ort
 
 
@@ -196,7 +197,7 @@ def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=Tr
     logger.info(f"Arm position tracking saved to {filename}")
     return filename
 
-def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftside: bool, debug=False):
+def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
     max_iteration = 1000;
     tol = 0.01;
     step_size = 0.8
@@ -208,6 +209,12 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     # For logging to file
     arm_positions = []
     error_norms = []
+
+    if initialstate is None:
+        if leftside:
+            initialstate = np.array([ 0.2617995, -0.5846855,  0.       , -1.2653635,  0.       ])
+        else:
+            initialstate = np.array([-0.2617995,  0.5846855,  0.       ,  1.2653635,  0.       ])
 
     # Define multiple initial states to try when stuck
     if leftside:
@@ -231,9 +238,10 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     
     current_init_state_idx = 0
     next_pos_arm = initial_states[current_init_state_idx].copy()
+    next_pos = arms_to_fullqpos(model, data, next_pos_arm.flatten(), leftside)
     
     for i in range(max_iteration):
-        ee_pos, ee_rot = forward_kinematics(model, data, next_pos_arm, leftside=leftside)
+        ee_pos, ee_rot = forward_kinematics(model, data, next_pos, leftside=leftside)
         error = np.subtract(target_pos, ee_pos)
         error_norm_pos = np.linalg.norm(error)
 
@@ -251,17 +259,17 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
             logger.info(f"Switching to initial state {current_init_state_idx} after {i} iterations due to high error: {error_norm_pos:.6f}")
             next_pos_arm = initial_states[current_init_state_idx].copy()
             continue
-
-        prev_pos_arm = next_pos_arm.copy()
-        prev_pos = arms_to_fullqpos(model, data, prev_pos_arm, leftside=leftside)
-
         
+
+        #* Find Next Pos
         jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
 
         n = jacp.shape[1]
         I = np.identity(n)
 
+        data.qpos = next_pos
+        mujoco.mj_forward(model, data)
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
         
 
@@ -272,11 +280,15 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
         
         delta_q =  trans_w*(J_inv @ error) + rot_w*(JR_inv @ error_rot)
         
-        next_pos = prev_pos + delta_q * step_size
 
+        # prev_pos_arm = next_pos_arm.copy()
+        prev_pos = next_pos.copy()
+
+        next_pos = prev_pos + delta_q * step_size
         next_pos = joint_limit_clamp(model, next_pos)
         next_pos_arm = slice_dofs(model, data, next_pos, leftside)
         next_pos_arm = next_pos_arm.flatten()
+
 
         if i % 88 == 0:
             # Calculate the row-reduced echelon form (RREF) of the Jacobian
@@ -302,6 +314,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
             if debug and arm_positions:
                 save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=True)
             
+            mujoco.mj_resetData(model, data)
             return next_pos, error_norm_pos, error_norm_rot
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f}")
@@ -310,4 +323,5 @@ def inverse_kinematics(model, data, target_pos, target_ort, initialstate, leftsi
     if debug and arm_positions:
         save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
     
+    mujoco.mj_resetData(model, data)
     return next_pos, error_norm_pos, error_norm_rot

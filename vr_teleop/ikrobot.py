@@ -150,6 +150,7 @@ class KBot_Robot(MuJoCo_Robot):
         
         ee_pos = self.data.body(ee_name).xpos.copy()
         ee_orientation = self.data.body(ee_name).xquat.copy()
+        
         return ee_pos, ee_orientation
 
     def get_arm_qpos(self, leftside: bool):

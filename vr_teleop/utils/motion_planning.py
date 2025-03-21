@@ -29,10 +29,13 @@ class Robot_Planner:
         self.cur_angles = cur_angles
     
     def set_nextangles(self, next_angles):
+        if self.cur_angles is not None and self.next_angles is not None:
+            self.cur_angles = self.next_angles
         self.next_angles = next_angles
 
     def isclose_to_qlimits(self, robot, qpos):
         pass
+
 
     def arms_tofullq(self, leftarmq=None, rightarmq=None):
         newqpos = self.robot.data.qpos.copy()
@@ -183,8 +186,5 @@ class Robot_Planner:
         trajectory_angles[-1] = next_angle
 
         return trajectory_angles, trajectory_velocities, trajectory_times
-
-
-
 
 
