@@ -23,8 +23,8 @@ async def process_message(message):
         
         if 'controller' in data:
             controller = data['controller']
-
-            breakpoint()
+            #* data's are dict_keys(['axes', 'buttons', 'controller', 'position', 'rotation'])
+            #* data["buttons"] are length 12
             
             if controller not in ['left', 'right']:
                 raise ValueError("Controller must be 'left' or 'right'")
@@ -64,7 +64,6 @@ async def process_message(message):
 
 async def handle_connection(websocket):
     """Handle incoming WebSocket connections."""
-    print("trying)")
     try:
         async for message in websocket:
             logging.info("Received connection")

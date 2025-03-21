@@ -43,7 +43,7 @@ class TeleopSession:
         self.logger.info("Robot actuators enabling")
         await self.koskbot.activate()
 
-         #* Move to starting position
+        #* Move to starting position
         llocs = self.mjRobot.get_limit_center(leftside=True)
         rlocs = self.mjRobot.get_limit_center(leftside=False)
 
@@ -56,6 +56,8 @@ class TeleopSession:
         planned_angles, _ , time_grid = self.planner.get_waypoints()
 
         await self.koskbot.send_to_kos(planned_angles, time_grid)
+
+        self.logger.info("Starting positions set")
 
         await asyncio.sleep(1)
 

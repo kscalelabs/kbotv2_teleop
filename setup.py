@@ -9,7 +9,8 @@ setup(
         "mujoco",
         "numpy",
         "pykos",
-        "scipy"
+        "scipy",
+        "pytest"
         # Add other dependencies here
     ],
 )
