@@ -31,17 +31,17 @@ class CustomFormatter(logging.Formatter):
         record.levelname = levelname_color
         return super().format(record)
 
-def setup_logger(name):
+def setup_logger(name, level=logging.INFO):
     """Set up and return a logger with the given name."""
     logger = logging.getLogger(name)
     
     if not logger.handlers:
         # Set logging level
-        logger.setLevel(logging.INFO)
+        logger.setLevel(level)
         
         # Create console handler
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(logging.INFO)
+        handler.setLevel(level)
         
         formatter = CustomFormatter('%(levelname)s: [%(name)s] %(message)s')
         handler.setFormatter(formatter)

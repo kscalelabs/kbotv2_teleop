@@ -10,8 +10,7 @@ from vr_teleop.utils.motion_planning import Robot_Planner
 from vr_teleop.kosRobot import KOS_KBot
 
 
-logger = setup_logger(__name__)
-logger.setLevel(logging.DEBUG)
+logger = setup_logger(__name__, logging.INFO)
 
 
 class TeleopSession:
@@ -199,7 +198,7 @@ async def websocket_handler(websocket, session):
     try:
         # Get client info and log with debug level
         client_info = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
-        logger.debug(f"New connection from {client_info}")
+        logger.warning(f"New connection from {client_info}")
             
         # Only create control tasks if they're not already running
         if session.left_control_task is None or session.left_control_task.done():
