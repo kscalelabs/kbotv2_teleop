@@ -8,3 +8,5 @@ To run tests
 
 To run an individual test
 `pytest tests/test_robot_ik.py::test_hard_test_limit2 -v --no-header`
+`pytest tests/test_robot_ik.py::test_left_edge_downward -v --no-header`
+`pytest tests/test_robot_ik.py::test_ik_performance_left_workspace_front_right`

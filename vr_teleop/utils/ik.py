@@ -198,17 +198,13 @@ def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=Tr
     return filename
 
 def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
-    # Make a copy of the original data
-    original_data = mujoco.MjData(model)
-    mujoco.mj_copyData(original_data, model, data)
-    
-    max_iteration = 500;
+    max_iteration = 600;
     tol = 0.01;
     step_size = 0.8
-    damping = 0.5
+    damping = 0.2
 
-    rot_w = 0.7
-    trans_w = 1  
+    rot_w = 1
+    trans_w = 1
 
     # For logging to file
     arm_positions = []
@@ -258,6 +254,8 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
     next_pos_arm = initial_states[current_init_state_idx].copy()
     next_pos = arms_to_fullqpos(model, data, next_pos_arm.flatten(), leftside)
     
+    I = np.identity(model.nv)
+    
     for i in range(max_iteration):
         ee_pos, ee_rot = forward_kinematics(model, data, next_pos, leftside=leftside)
         error = np.subtract(target_pos, ee_pos)
@@ -284,9 +282,6 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
 
-        n = jacp.shape[1]
-        I = np.identity(n)
-
         data.qpos = next_pos
         mujoco.mj_forward(model, data)
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
@@ -309,7 +304,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         next_pos_arm = next_pos_arm.flatten()
 
 
-        if i % 88 == 0:
+        if debug and i % 88 == 0:
             # Calculate the row-reduced echelon form (RREF) of the Jacobian
             # This helps analyze the linear independence of the Jacobian rows
             # and identify potential singularities
@@ -322,27 +317,21 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
             logger.debug(f"Target position: {target_pos}")
             logger.debug(f"Current end effector position: {ee_pos}")
             logger.debug(f"Current joints: {next_pos_arm}")
-            # breakpoint()
 
         if error_norm_pos < tol and error_norm_rot < tol:
             logger.info(f"Converged in {i} iterations")
             logger.info(f"Final end effector position: {error_norm_pos}")
             logger.info(f"Final orientation error norm: {error_norm_rot}")
             
-            # Save tracking data to CSV if debug is enabled
-            if debug and arm_positions:
-                save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=True)
+            # if debug and arm_positions:
+            #     save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=True)
             
             # At the end of the function, restore original data state
-            mujoco.mj_copyData(data, model, original_data)
             return next_pos_arm, error_norm_pos, error_norm_rot
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f} and rot: {error_norm_rot}")
     
-    # Save tracking data to CSV even if we didn't converge
-    if debug and arm_positions:
-        save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
+    # if debug and arm_positions:
+    #     save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
     
-    # At the end of the function, restore original data state
-    mujoco.mj_copyData(data, model, original_data)
     return next_pos_arm, error_norm_pos, error_norm_rot
