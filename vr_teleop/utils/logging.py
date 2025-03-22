@@ -1,4 +1,5 @@
 import logging
+import sys
 from dataclasses import dataclass
 
 
@@ -31,15 +32,26 @@ class CustomFormatter(logging.Formatter):
         return super().format(record)
 
 def setup_logger(name):
-    """Setup logger with the custom formatter."""
+    """Set up and return a logger with the given name."""
     logger = logging.getLogger(name)
-    handler = logging.StreamHandler()
-    handler.setFormatter(CustomFormatter(
-        fmt="%(levelname)s: [%(name)s] %(message)s"
-    ))
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)  # Set default level to INFO
-    logger.propagate = False
+    
+    if not logger.handlers:
+        # Set logging level
+        logger.setLevel(logging.INFO)
+        
+        # Create console handler
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
+        
+        formatter = CustomFormatter('%(levelname)s: [%(name)s] %(message)s')
+        handler.setFormatter(formatter)
+        
+        # Add handler to logger
+        logger.addHandler(handler)
+        
+        # Prevent propagation to root logger
+        logger.propagate = False
+    
     return logger
 
 

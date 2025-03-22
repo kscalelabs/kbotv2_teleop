@@ -11,6 +11,8 @@ from vr_teleop.kosRobot import KOS_KBot
 
 
 logger = setup_logger(__name__)
+logger.setLevel(logging.DEBUG)
+
 
 class TeleopSession:
     def __init__(self, kos_instance: KOS, sim: bool, urdf_path="vr_teleop/kbot_urdf/scene.mjcf"):
@@ -37,6 +39,9 @@ class TeleopSession:
         self.running = True
 
         self.logger = setup_logger(__name__)
+
+        self.left_control_task = None
+        self.right_control_task = None
 
     async def initialize(self):
         self.logger.info("Robot actuators enabling")
@@ -192,32 +197,40 @@ class TeleopSession:
 async def websocket_handler(websocket, session):
     """Handle each client connection with an existing session."""
     try:
-        #* Create VR Controller Tasks if they're not running
-        left_arm_task = asyncio.create_task(session.left_control_loop())
-        right_arm_task = asyncio.create_task(session.right_control_loop())
+        # Get client info and log with debug level
+        client_info = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
+        logger.debug(f"New connection from {client_info}")
+            
+        # Only create control tasks if they're not already running
+        if session.left_control_task is None or session.left_control_task.done():
+            session.left_control_task = asyncio.create_task(session.left_control_loop())
+            logger.info("Started left control loop task")
+            
+        if session.right_control_task is None or session.right_control_task.done():
+            session.right_control_task = asyncio.create_task(session.right_control_loop())
+            logger.info("Started right control loop task")
 
         try:
+            # Message loop
             async for message in websocket:
-                logger.info("Received WebSocket message")
+                logger.debug(f"Received WebSocket message")
                 await session.get_vrcont(message)
                 await websocket.send(json.dumps({"status": "success"}))
+                
         except websockets.exceptions.ConnectionClosed:
-            logger.info("Client disconnected")
+            logger.debug(f"Client {client_info} disconnected")
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
         finally:
-            # Cancel the control tasks
-            right_arm_task.cancel()
-            left_arm_task.cancel()
-            
-            try:
-                await right_arm_task
-                await left_arm_task
-            except asyncio.CancelledError:
-                pass
+            # Don't cancel the control tasks when a client disconnects
+            # They should keep running to handle future connections
+            pass
     except Exception as e:
         logger.error(f"Error in websocket handler: {e}")
-        await websocket.send(json.dumps({"status": "error", "message": str(e)}))
+        try:
+            await websocket.send(json.dumps({"status": "error", "message": str(e)}))
+        except:
+            pass  # Client might already be disconnected
 
 async def main():
     """Start KOS and then WebSocket server."""
@@ -246,6 +259,13 @@ async def main():
                 finally:
                     # Clean shutdown
                     session.running = False
+                    
+                    # Cancel any running tasks
+                    if session.left_control_task:
+                        session.left_control_task.cancel()
+                    if session.right_control_task:
+                        session.right_control_task.cancel()
+                    
                     await session.shutdown()
                     
             except Exception as e:
