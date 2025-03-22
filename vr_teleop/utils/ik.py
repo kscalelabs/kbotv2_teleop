@@ -272,7 +272,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         # Check if we should try a different initial state
         if i > 0 and i % (max_iteration // len(initial_states)) == 0 and error_norm_pos > 0.1:
             current_init_state_idx = (current_init_state_idx + 1) % len(initial_states)
-            logger.info(f"Switching to initial state {current_init_state_idx} after {i} iterations due to high error: {error_norm_pos:.6f}")
+            # logger.info(f"Switching to initial state {current_init_state_idx} after {i} iterations due to high error: {error_norm_pos:.6f}")
             next_pos_arm = initial_states[current_init_state_idx].copy()
             next_pos = arms_to_fullqpos(model, data, next_pos_arm.flatten(), leftside)
             continue

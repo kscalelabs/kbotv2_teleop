@@ -20,18 +20,19 @@ class TeleopSession:
 
         # Add an event for button state changes
         self.left_btn_event = asyncio.Event() 
-        self.left_btn = None
+        self.left_btn = False
         self.left_last_pos = None
         self.left_last_rot = None
         self.left_lock = asyncio.Lock()
         self.left_goal = None
 
         self.right_btn_event = asyncio.Event()
-        self.right_btn = None
+        self.right_btn = False
         self.right_last_pos = None
         self.right_last_rot = None
         self.right_lock = asyncio.Lock()
         self.right_goal = None
+        self.right_movement_in_progress = False
 
         self.running = True
 
@@ -78,7 +79,8 @@ class TeleopSession:
                 if controller == 'left':
                     async with self.left_lock:
                         if 'buttons' in data:
-                            old_btn_state = self.left_btn
+                            # Initialize old_btn_state with current state, handling None case
+                            old_btn_state = self.left_btn if self.left_btn is not None else False
                             self.left_btn = data['buttons'][0]['pressed']
                             # If button state changed, set the event
                             if old_btn_state != self.left_btn:
@@ -90,8 +92,12 @@ class TeleopSession:
                         if 'buttons' in data:
                             old_btn_state = self.right_btn
                             self.right_btn = data['buttons'][0]['pressed']
-                            # If button state changed, set the event
-                            if old_btn_state != self.right_btn:
+                            
+                            # Only set the event if:
+                            # 1. Button state changed, AND
+                            # 2. We're not in the middle of a movement, OR we're transitioning to button released
+                            if old_btn_state != self.right_btn and (not self.right_movement_in_progress or not self.right_btn):
+                                logger.info(f"Right button state changed to {self.right_btn}")
                                 self.right_btn_event.set()
                     # self.logger.debug(f"Updated right controller state, buttons={self.right_btn}")
             else:
@@ -137,42 +143,47 @@ class TeleopSession:
         period = 1.0 / hz
         while self.running:
             try:
+                # Wait for button event
                 await self.right_btn_event.wait()
-
-
+                
+                # Immediately clear the event
+                self.right_btn_event.clear()
+                
+                # Check if button is actually pressed before proceeding
+                if not self.right_btn:
+                    logger.debug("Right button released, skipping movement")
+                    await asyncio.sleep(period)
+                    continue
+                    
+                logger.info("Processing right button press")
+                
+                # Get current position
                 ree_pos, ree_ort = self.mjRobot.get_ee_pos(leftside=False)
                 new_pos, new_quat = self.planner.apply_pose_delta(ree_pos, ree_ort, [0.3, 0.3, -0.1], [0, 0, 0])
+                logger.warning(f"old pos: {ree_pos} and new post {new_pos}")
 
+                # Apply inverse kinematics
                 pos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(self.mjRobot.model, self.mjRobot.data, new_pos, new_quat, leftside=False)
-                logger.warning(f"Computed angles {pos_arm[-1]}")
                 nextqpos = self.planner.arms_tofullq(leftarmq=self.mjRobot.get_limit_center(leftside=True), rightarmq=pos_arm)
                 
                 self.planner.set_nextangles(nextqpos)
                 planned_angles, _ , time_grid = self.planner.get_waypoints()
 
-                await self.koskbot.send_to_kos(planned_angles, time_grid)
-                breakpoint()
-                await asyncio.sleep(1)
-
-
-                # async with self.goal_lock:
-                #     goal = self.goal_state
-
-                # if goal is not None:
-                #     # TODO: Replace with real IK + motion planning
-                #     state_response = await self.kos.actuator.get_actuators_state(self.actuators.keys())
-                #     current_joint_states = [state.position for state in state_response.states]
-
-                #     # Placeholder motion plan
-                #     # next_joint_states = inverse_kinematics(goal)
-                #     # planned_commands = motion_planning(current_joint_states, next_joint_states)
-
-                #     # await self.kos.actuator.command_actuators(planned_commands)
-                #     logger.debug("Control loop: would send commands here")
-
-                await asyncio.sleep(period)
-
-
+                # Add a debounce to prevent too-frequent movements
+                # Set a flag to indicate movement in progress
+                async with self.right_lock:
+                    self.right_movement_in_progress = True
+                    
+                try:
+                    await self.koskbot.send_to_kos(planned_angles, time_grid, self.planner.idx_to_joint_map)
+                    # Wait to ensure movement completes before accepting more commands
+                    await asyncio.sleep(1)
+                finally:
+                    # Clear the in-progress flag
+                    async with self.right_lock:
+                        self.right_movement_in_progress = False
+                
+                # ... existing code ...
             except Exception as e:
                 logger.error(f"Control loop error: {e}")
                 await asyncio.sleep(0.1)
