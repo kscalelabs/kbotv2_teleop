@@ -80,7 +80,7 @@ class KOS_KBot:
         self.sim = sim
 
 
-    async def send_to_kos(self, all_angles, time_grid):
+    async def send_to_kos(self, all_angles, time_grid, idx_to_joint_map):
         all_angles = np.degrees(all_angles)
         start_time = time.time()
 
@@ -95,7 +95,7 @@ class KOS_KBot:
         actuator_to_joint_idx = {}
         for i, actuator_id in enumerate(all_actuators_ids):
             joint_name = self.sim_act_list[actuator_id].joint_name
-            for idx, joint in self.idx_to_joint_map.items():
+            for idx, joint in idx_to_joint_map.items():
                 if joint == joint_name:
                     actuator_to_joint_idx[actuator_id] = idx
                     break

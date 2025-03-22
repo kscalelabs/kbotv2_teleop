@@ -154,9 +154,9 @@ async def run_kos():
 asyncio.run(run_kos())
 
 
-new_pos, new_quat = motion_plan.apply_pose_delta(lee_pos, lee_ort, [0.3, 0.3, -0.1], [0, 0, 0])
-pos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(solver.model, solver.data, new_pos, new_quat, leftside=True)
-nextqpos = motion_plan.arms_tofullq(leftarmq=pos_arm, rightarmq=solver.get_limit_center(leftside=False))
+new_pos, new_quat = motion_plan.apply_pose_delta(ree_pos, ree_ort, [0.3, 0.5, -0.1], [0, 0, 0])
+pos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(solver.model, solver.data, new_pos, new_quat, leftside=False)
+nextqpos = motion_plan.arms_tofullq(leftarmq=solver.get_limit_center(leftside=True), rightarmq=pos_arm)
 
 
 motion_plan.set_nextangles(nextqpos)

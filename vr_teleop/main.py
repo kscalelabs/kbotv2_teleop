@@ -1,16 +1,14 @@
 import asyncio
 import json
-import time
 import websockets
 from pykos import KOS
+from .utils.logging import setup_logger
 
 from vr_teleop.utils.ik import *
 from vr_teleop.mjRobot import MJ_KBot
 from vr_teleop.utils.motion_planning import Robot_Planner
 from vr_teleop.kosRobot import KOS_KBot
 
-from .vr_cont import process_message
-from .utils.logging import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -21,7 +19,7 @@ class TeleopSession:
         self.koskbot = KOS_KBot(kos_instance, self.planner,sim=sim)
 
         # Add an event for button state changes
-        self.left_btn_event = asyncio.Event()
+        self.left_btn_event = asyncio.Event() 
         self.left_btn = None
         self.left_last_pos = None
         self.left_last_rot = None
@@ -50,12 +48,15 @@ class TeleopSession:
         idx_to_joint_map = self.mjRobot.qpos_idx_to_jointname()
         self.planner.set_idx_joint_map(idx_to_joint_map)
 
+
         fullq = self.planner.arms_tofullq(llocs, rlocs)
+        self.mjRobot.set_qpos(fullq)
+
         self.planner.set_curangles(self.mjRobot.data.qpos)
         self.planner.set_nextangles(fullq)
         planned_angles, _ , time_grid = self.planner.get_waypoints()
 
-        await self.koskbot.send_to_kos(planned_angles, time_grid)
+        await self.koskbot.send_to_kos(planned_angles, time_grid, idx_to_joint_map)
 
         self.logger.info("Starting positions set")
 
@@ -78,21 +79,21 @@ class TeleopSession:
                     async with self.left_lock:
                         if 'buttons' in data:
                             old_btn_state = self.left_btn
-                            self.left_btn = data['buttons']
+                            self.left_btn = data['buttons'][0]['pressed']
                             # If button state changed, set the event
                             if old_btn_state != self.left_btn:
                                 self.left_btn_event.set()
-                    self.logger.info(f"Updated left controller state, buttons={self.left_btn}")
+                    # self.logger.debug(f"Updated left controller state, buttons={self.left_btn}")
                 
                 elif controller == 'right':
                     async with self.right_lock:
                         if 'buttons' in data:
                             old_btn_state = self.right_btn
-                            self.right_btn = data['buttons']
+                            self.right_btn = data['buttons'][0]['pressed']
                             # If button state changed, set the event
                             if old_btn_state != self.right_btn:
                                 self.right_btn_event.set()
-                    self.logger.info(f"Updated right controller state, buttons={self.right_btn}")
+                    # self.logger.debug(f"Updated right controller state, buttons={self.right_btn}")
             else:
                 self.logger.warning("No valid controller data found in message")
         except json.JSONDecodeError as e:
@@ -140,16 +141,17 @@ class TeleopSession:
 
 
                 ree_pos, ree_ort = self.mjRobot.get_ee_pos(leftside=False)
-
                 new_pos, new_quat = self.planner.apply_pose_delta(ree_pos, ree_ort, [0.3, 0.3, -0.1], [0, 0, 0])
 
                 pos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(self.mjRobot.model, self.mjRobot.data, new_pos, new_quat, leftside=False)
+                logger.warning(f"Computed angles {pos_arm[-1]}")
                 nextqpos = self.planner.arms_tofullq(leftarmq=self.mjRobot.get_limit_center(leftside=True), rightarmq=pos_arm)
                 
                 self.planner.set_nextangles(nextqpos)
                 planned_angles, _ , time_grid = self.planner.get_waypoints()
 
                 await self.koskbot.send_to_kos(planned_angles, time_grid)
+                breakpoint()
                 await asyncio.sleep(1)
 
 
@@ -176,16 +178,12 @@ class TeleopSession:
                 await asyncio.sleep(0.1)
 
 
-async def handle_connection(websocket):
-    """Handle each client connection."""
-    async with KOS(ip="10.33.12.161", port=50051) as kos:
-        session = TeleopSession(kos, sim=True)
-        await session.initialize()
-
-        #* Create VR Controller Tasks
+async def websocket_handler(websocket, session):
+    """Handle each client connection with an existing session."""
+    try:
+        #* Create VR Controller Tasks if they're not running
         left_arm_task = asyncio.create_task(session.left_control_loop())
         right_arm_task = asyncio.create_task(session.right_control_loop())
-
 
         try:
             async for message in websocket:
@@ -197,25 +195,52 @@ async def handle_connection(websocket):
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
         finally:
-            session.running = False
-            await session.shutdown()
+            # Cancel the control tasks
             right_arm_task.cancel()
             left_arm_task.cancel()
             
-            await session.shutdown()
             try:
                 await right_arm_task
                 await left_arm_task
             except asyncio.CancelledError:
                 pass
-
+    except Exception as e:
+        logger.error(f"Error in websocket handler: {e}")
+        await websocket.send(json.dumps({"status": "error", "message": str(e)}))
 
 async def main():
-    """Start WebSocket server."""
-    server = await websockets.serve(handle_connection, "localhost", 8586)
-    logger.info("WebSocket server started at ws://localhost:8586")
-    await server.wait_closed()
-
+    """Start KOS and then WebSocket server."""
+    try:
+        # Initialize KOS connection once
+        async with KOS(ip="10.33.12.161", port=50051) as kos:
+            # Create and initialize session
+            session = TeleopSession(kos, sim=True)
+            try:
+                logger.info("Initializing robot...")
+                await session.initialize()
+                logger.info("Robot initialization complete")
+                
+                # Start WebSocket server with the initialized session
+                async def handle_connection(websocket):
+                    await websocket_handler(websocket, session)
+                
+                server = await websockets.serve(handle_connection, "localhost", 8586)
+                logger.info("WebSocket server started at ws://localhost:8586")
+                
+                # Keep server running until manually terminated
+                try:
+                    await server.wait_closed()
+                except asyncio.CancelledError:
+                    logger.info("Server shutdown requested")
+                finally:
+                    # Clean shutdown
+                    session.running = False
+                    await session.shutdown()
+                    
+            except Exception as e:
+                logger.error(f"Error during initialization: {e}")
+    except Exception as e:
+        logger.error(f"Error connecting to KOS: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

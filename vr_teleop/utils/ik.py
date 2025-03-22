@@ -198,7 +198,11 @@ def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=Tr
     return filename
 
 def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
-    max_iteration = 1000;
+    # Make a copy of the original data
+    original_data = mujoco.MjData(model)
+    mujoco.mj_copyData(original_data, model, data)
+    
+    max_iteration = 500;
     tol = 0.01;
     step_size = 0.8
     damping = 0.5
@@ -329,7 +333,8 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
             if debug and arm_positions:
                 save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=True)
             
-            mujoco.mj_resetData(model, data)
+            # At the end of the function, restore original data state
+            mujoco.mj_copyData(data, model, original_data)
             return next_pos_arm, error_norm_pos, error_norm_rot
     
     logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f} and rot: {error_norm_rot}")
@@ -338,5 +343,6 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
     if debug and arm_positions:
         save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
     
-    mujoco.mj_resetData(model, data)
+    # At the end of the function, restore original data state
+    mujoco.mj_copyData(data, model, original_data)
     return next_pos_arm, error_norm_pos, error_norm_rot
