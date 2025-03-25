@@ -198,8 +198,8 @@ def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=Tr
     return filename
 
 def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
-    max_iteration = 600;
-    tol = 0.01;
+    max_iteration = 400;
+    tol = 0.05;
     step_size = 0.8
     damping = 0.2
 
@@ -222,8 +222,8 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         initial_states = [
             initialstate.copy(),
             np.array([0, 0, 1.5, -0.5, 0]),
-            np.array([2, -1.3, -1.5, -0.5, 0]), 
-            np.array([[2, -1.3, 1.5, -0.5, 0]]),
+            # np.array([2, -1.3, -1.5, -0.5, 0]), 
+            # np.array([[2, -1.3, 1.5, -0.5, 0]]),
             # np.array([
             #     np.random.uniform(-2.094395, 2.617994),  # left_shoulder_pitch
             #     np.random.uniform(-1.658063, 0.488692),  # left_shoulder_roll
@@ -237,8 +237,8 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         initial_states = [
             initialstate.copy(),
             np.array([0, 0, -1.5, 0.5, 0]),
-            np.array([-2, 1.3, -1.5, 0.5, 0]),
-            np.array([-2, 1.3, 1.5, 0.5, 0]),
+            # np.array([-2, 1.3, -1.5, 0.5, 0]),
+            # np.array([-2, 1.3, 1.5, 0.5, 0]),
             # np.array([
             #     np.random.uniform(-2.617994, 2.094395),  # right_shoulder_pitch
             #     np.random.uniform(-0.488692, 1.658063),  # right_shoulder_roll
