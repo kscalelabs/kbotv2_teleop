@@ -42,7 +42,7 @@ class Controller:
                 leftside=False,
             )
 
-        logger.warning(f"IK: {qpos_arm}, {error_norm_pos}, {error_norm_rot}")
+        logger.debug(f"IK: {qpos_arm}, {error_norm_pos}, {error_norm_rot}")
         self.last_ee_pos = cur_ee_pos
 
         qpos_full = self.mjRobot.convert_armqpos_to_fullqpos(qpos_arm, leftside=False)
@@ -96,7 +96,7 @@ async def command_kbot(qnew_pos, kos):
     
     command_tasks = []
     
-    logger.warning(f"Commanding {command}")
+    logger.debug(f"Commanding {command}")
     command_tasks.append(kos.actuator.command_actuators(command))
     await asyncio.gather(*command_tasks)
 
@@ -135,6 +135,7 @@ async def websocket_handler(websocket):
                     
                     # Send response back
                     await websocket.send(json.dumps({"status": "success"}))
+
                 
             except json.JSONDecodeError:
                 logger.error(f"Invalid JSON received: {message}")
@@ -154,6 +155,10 @@ async def controller_task(controller, kos, rate=100):
     period = 1.0 / rate  # seconds between iterations
     
     logger.info(f"Starting controller task at {rate}Hz (every {period*1000:.1f}ms)")
+    
+    # For measuring average Hz
+    iteration_count = 0
+    last_hz_print_time = time.time()
     
     while True:
         start_time = time.time()
@@ -179,11 +184,24 @@ async def controller_task(controller, kos, rate=100):
         elapsed = time.time() - start_time
         sleep_time = max(0, period - elapsed)
         
+        # Increment iteration counter
+        iteration_count += 1
+        
+        # Check if it's time to print the average Hz (every 1 second)
+        current_time = time.time()
+        if current_time - last_hz_print_time >= 1.0:
+            elapsed_time = current_time - last_hz_print_time
+            average_hz = iteration_count / elapsed_time
+            logger.error(f"Controller average rate: {average_hz:.2f} Hz over the last {elapsed_time:.2f} seconds ({iteration_count} iterations)")
+            # Reset counters
+            iteration_count = 0
+            last_hz_print_time = current_time
+        
         if sleep_time > 0:
             await asyncio.sleep(sleep_time)
         else:
             # Log if we're not keeping up with the desired rate
-            logger.warning(f"Controller iteration took {elapsed*1000:.1f}ms, exceeding period of {period*1000:.1f}ms")
+            logger.debug(f"Controller iteration took {elapsed*1000:.1f}ms, exceeding period of {period*1000:.1f}ms")
             # Yield to other tasks but don't sleep
             await asyncio.sleep(0)
 

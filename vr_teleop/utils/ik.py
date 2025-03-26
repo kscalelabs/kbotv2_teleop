@@ -198,7 +198,7 @@ def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=Tr
     return filename
 
 def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
-    max_iteration = 700;
+    max_iteration = 10;
     tol = 0.05;
     step_size = 0.8
     damping = 0.4
@@ -337,7 +337,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
             # At the end of the function, restore original data state
             return next_pos_arm, error_norm_pos, error_norm_rot
     
-    logger.warning(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f} and rot: {error_norm_rot}")
+    logger.debug(f"Failed to converge after {max_iteration} iterations, error: {error_norm_pos:.6f} and rot: {error_norm_rot}")
     
     # if debug and arm_positions:
     #     save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
