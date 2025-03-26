@@ -126,8 +126,8 @@ async def process_message(message):
             # Basic logging
             # logger.warning(f"{controller} pos: {position}")
             logger.warning(f"rot: {euler_angles}")
-            # logger.warning(f"axes: {axes}")
-            logger.warning(f"button: {rotation}")
+            logger.warning(f"position: {position}")
+            logger.warning(f"quat: {rotation}")
             if controller_states[controller]['buttons']:
                 logger.warning(f"button: {button_pressed}")
             

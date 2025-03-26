@@ -198,10 +198,10 @@ def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=Tr
     return filename
 
 def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
-    max_iteration = 400;
+    max_iteration = 700;
     tol = 0.05;
     step_size = 0.8
-    damping = 0.2
+    damping = 0.4
 
     rot_w = 1
     trans_w = 1
@@ -221,7 +221,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2"
         initial_states = [
             initialstate.copy(),
-            np.array([0, 0, 1.5, -0.5, 0]),
+            # np.array([0, 0, 1.5, -0.5, 0]),
             # np.array([2, -1.3, -1.5, -0.5, 0]), 
             # np.array([[2, -1.3, 1.5, -0.5, 0]]),
             # np.array([
@@ -236,7 +236,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop"
         initial_states = [
             initialstate.copy(),
-            np.array([0, 0, -1.5, 0.5, 0]),
+            # np.array([0, 0, -1.5, 0.5, 0]),
             # np.array([-2, 1.3, -1.5, 0.5, 0]),
             # np.array([-2, 1.3, 1.5, 0.5, 0]),
             # np.array([
@@ -261,8 +261,12 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         error = np.subtract(target_pos, ee_pos)
         error_norm_pos = np.linalg.norm(error)
 
-        error_rot = orientation_error(target_ort, ee_rot)
-        error_norm_rot = np.linalg.norm(error_rot)
+        if target_ort is not None:
+            error_rot = orientation_error(target_ort, ee_rot)
+            error_norm_rot = np.linalg.norm(error_rot)
+        else:
+            error_rot = np.zeros(3)
+            error_norm_rot = 0
 
         # Store current arm position and error for tracking
         if debug:
@@ -288,11 +292,15 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         
 
         #*Term for Translation:
-        J_inv = np.linalg.inv( jacp.T @ jacp + damping * I) @ jacp.T
-        #*Term for Rotation:
-        JR_inv = np.linalg.inv(jacr.T @ jacr + damping * I) @ jacr.T
+        J_inv = np.linalg.inv(jacp.T @ jacp + damping * I) @ jacp.T
+        delta_q = trans_w * (J_inv @ error)
+
+        if target_ort is not None:
+            #*Term for Rotation:
+            JR_inv = np.linalg.inv(jacr.T @ jacr + damping * I) @ jacr.T
+            delta_q += rot_w * (JR_inv @ error_rot)
         
-        delta_q =  trans_w*(J_inv @ error) + rot_w*(JR_inv @ error_rot)
+     
         
 
         # prev_pos_arm = next_pos_arm.copy()
@@ -335,3 +343,4 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
     #     save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=False)
     
     return next_pos_arm, error_norm_pos, error_norm_rot
+
