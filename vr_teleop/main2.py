@@ -5,6 +5,8 @@ from pykos import KOS
 from dataclasses import dataclass
 from .utils.logging import setup_logger
 from scipy.spatial.transform import Rotation as R
+import numpy as np
+import time
 
 from vr_teleop.utils.ik import *
 from vr_teleop.mjRobot import MJ_KBot
@@ -13,6 +15,13 @@ from vr_teleop.kosRobot import KOS_KBot
 
 
 logger = setup_logger(__name__, logging.INFO)
+
+# Shared state for controller positions
+controller_states = {
+    'left': {'position': np.array([0.01, 0.01, 0.01]), 'rotation': None, 'buttons': None, 'axes': None},
+    'right': {'position': np.array([0.01, 0.01, 0.01]), 'rotation': None, 'buttons': None, 'axes': None},
+    'updated': False
+}
 
 class Controller:
     def __init__(self, urdf_path="vr_teleop/kbot_urdf/scene.mjcf"):
@@ -25,8 +34,6 @@ class Controller:
         self.mjRobot.set_qpos(fullq)
 
     def step(self, cur_ee_pos):
-
-        cur_ee_pos = np.array([0.04, 0.04, 0.04])
         qpos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(
                 self.mjRobot.model, 
                 self.mjRobot.data, 
@@ -35,6 +42,7 @@ class Controller:
                 leftside=False,
             )
 
+        logger.warning(f"IK: {qpos_arm}, {error_norm_pos}, {error_norm_rot}")
         self.last_ee_pos = cur_ee_pos
 
         qpos_full = self.mjRobot.convert_armqpos_to_fullqpos(qpos_arm, leftside=False)
@@ -93,57 +101,137 @@ async def command_kbot(qnew_pos, kos):
     await asyncio.gather(*command_tasks)
 
 
-async def websocket_handler(websocket, controller, kos):
-    message = await websocket.recv()
-    data = json.loads(message)
+async def websocket_handler(websocket):
+    """Handle incoming WebSocket messages and update the shared state."""
+    global controller_states
     
-    if 'controller' not in data:
-        return json.dumps({"status": "success"})
+    try:
+        async for message in websocket:
+            try:
+                if message == "ping":
+                    await websocket.send(json.dumps({"status": "success"}))
+                    continue
+                data = json.loads(message)
+
+                
+                if 'controller' in data and 'position' in data:
+                    controller = data['controller']
+                    
+                    if controller not in ['left', 'right']:
+                        continue
+                    
+                    # Convert position to numpy array
+                    position = np.array(data['position'], dtype=np.float64)
+                    
+                    # Update the controller state
+                    controller_states[controller]['position'] = position
+                    
+                    # Also update rotation, buttons, axes if available
+                    for field in ['rotation', 'buttons', 'axes']:
+                        if field in data:
+                            controller_states[controller][field] = data[field]
+                    
+                    controller_states['updated'] = True
+                    
+                    # Send response back
+                    await websocket.send(json.dumps({"status": "success"}))
+                
+            except json.JSONDecodeError:
+                logger.error(f"Invalid JSON received: {message}")
+            except Exception as e:
+                logger.error(f"Error processing message: {e}")
     
-    position =  np.array(data['position'], dtype=np.float64)
+    except websockets.exceptions.ConnectionClosed:
+        logger.info("WebSocket connection closed")
+    except Exception as e:
+        logger.error(f"WebSocket handler error: {e}")
 
-    qnew_pos = controller.step(position)
-    await command_kbot(qnew_pos, kos)
 
-    return json.dumps({"status": "success"})
+async def controller_task(controller, kos, rate=100):
+    """Run the controller at the specified rate (Hz)."""
+    global controller_states
+    
+    period = 1.0 / rate  # seconds between iterations
+    
+    logger.info(f"Starting controller task at {rate}Hz (every {period*1000:.1f}ms)")
+    
+    while True:
+        start_time = time.time()
+        
+        try:
+            # Get the current right controller position
+            position = controller_states['right']['position']
+            
+            if position is not None:
+                # Run the controller step and get new joint positions
+                qnew_pos = controller.step(position)
+                
+                # Send commands to the robot
+                await command_kbot(qnew_pos, kos)
+                
+            # Reset the updated flag
+            controller_states['updated'] = False
+            
+        except Exception as e:
+            logger.error(f"Error in controller task: {e}")
+        
+        # Calculate sleep time to maintain desired frequency
+        elapsed = time.time() - start_time
+        sleep_time = max(0, period - elapsed)
+        
+        if sleep_time > 0:
+            await asyncio.sleep(sleep_time)
+        else:
+            # Log if we're not keeping up with the desired rate
+            logger.warning(f"Controller iteration took {elapsed*1000:.1f}ms, exceeding period of {period*1000:.1f}ms")
+            # Yield to other tasks but don't sleep
+            await asyncio.sleep(0)
 
 
 async def main():
-    """Start KOS and then WebSocket server."""
+    """Start KOS and then run WebSocket server and controller task concurrently."""
     try:
         # Initialize KOS connection once
         async with KOS(ip="10.33.12.161", port=50051) as kos:
             controller = Controller()
+            
             try:
-                
-                async def handle_connection(websocket):
-                    await websocket_handler(websocket, controller, kos)
-
-
+                # Configure actuators
                 enable_commands = []
                 for cur_act in ACTUATORS.keys():
                     enable_commands.append(
-                            kos.actuator.configure_actuator(
-                        actuator_id=cur_act,
-                        kp=ACTUATORS[cur_act].kp,
-                        kd=ACTUATORS[cur_act].kd,
-                        torque_enabled=True)
-                )
+                        kos.actuator.configure_actuator(
+                            actuator_id=cur_act,
+                            kp=ACTUATORS[cur_act].kp,
+                            kd=ACTUATORS[cur_act].kd,
+                            torque_enabled=True
+                        )
+                    )
                 logger.warning(f"Enabling {enable_commands}")
                 await asyncio.gather(*enable_commands)
                 await asyncio.sleep(1)
-                            
                 
-                server = await websockets.serve(handle_connection, "localhost", 8586)
+                # Start the WebSocket server
+                server = await websockets.serve(websocket_handler, "localhost", 8586)
                 logger.info("WebSocket server started at ws://localhost:8586")
                 
+                # Start the controller task
+                control_task = asyncio.create_task(controller_task(controller, kos))
+                
+                # Wait for server to close or tasks to complete
                 try:
                     await server.wait_closed()
                 except asyncio.CancelledError:
                     logger.info("Server shutdown requested")
                 finally:
-                    pass
-
+                    # Clean up tasks
+                    if not control_task.done():
+                        control_task.cancel()
+                        try:
+                            await control_task
+                        except asyncio.CancelledError:
+                            logger.info("Controller task cancelled")
+                
             except Exception as e:
                 logger.error(f"Error during initialization: {e}")
     except Exception as e:
