@@ -72,7 +72,7 @@ class Controller:
         self.squeeze_pressed_prev = squeeze_pressed
         
         # Calculate IK based on the target position (not the raw controller position)
-        qpos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(
+        full_delta_q, error_norm_pos, error_norm_rot = inverse_kinematics(
                 self.mjRobot.model, 
                 self.mjRobot.data, 
                 self.target_ee_pos, 
@@ -80,15 +80,20 @@ class Controller:
                 leftside=False,
             )
 
-        logger.debug(f"IK: {qpos_arm}, {error_norm_pos}, {error_norm_rot}")
         
         # Store the last end effector position
         self.last_ee_pos = self.target_ee_pos.copy()
 
-        qpos_full = self.mjRobot.convert_armqpos_to_fullqpos(qpos_arm, leftside=False)
-        self.mjRobot.set_qpos(qpos_full)
+        prev_qpos = self.mjRobot.data.qpos.copy()
+        new_qpos = prev_qpos + full_delta_q
+        
+        logger.debug(f"IK: {new_qpos}, {error_norm_pos}, {error_norm_rot}")
 
-        return qpos_arm
+        self.mjRobot.set_qpos()
+
+        breakpoint()
+
+        return new_qpos
 
 @dataclass
 class Actuator:
