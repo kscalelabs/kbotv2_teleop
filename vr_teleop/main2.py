@@ -14,7 +14,7 @@ from vr_teleop.utils.motion_planning import Robot_Planner
 from vr_teleop.kosRobot import KOS_KBot
 
 
-logger = setup_logger(__name__, logging.INFO)
+logger = setup_logger(__name__, logging.WARNING)
 
 # Shared state for controller positions
 controller_states = {
@@ -28,25 +28,64 @@ class Controller:
         self.mjRobot = MJ_KBot(urdf_path)
         self.last_ee_pos = np.array([0.01, 0.01, 0.01])
 
+        # Get initial robot position
         rlocs = self.mjRobot.get_limit_center(leftside=False)
-
         fullq = self.mjRobot.convert_armqpos_to_fullqpos(rlocs, leftside=False)
         self.mjRobot.set_qpos(fullq)
+        
+        # For relative motion control
+        self.target_ee_pos = self.last_ee_pos.copy()
+        self.last_controller_pos = None
+        self.squeeze_pressed_prev = False
 
-    def step(self, cur_ee_pos):
+    def step(self, cur_ee_pos, buttons=None):
+        # Determine if squeeze button is pressed
+        squeeze_pressed = False
+        if buttons is not None:
+            # Find the squeeze button in the buttons list
+            for button in buttons:
+                if isinstance(button, dict) and button.get('name') == 'squeeze':
+                    squeeze_pressed = button.get('pressed', False)
+                    break
+        
+        # Handle squeeze button logic
+        if squeeze_pressed:
+            # If squeeze just got pressed, store current controller position
+            if not self.squeeze_pressed_prev:
+                self.last_controller_pos = cur_ee_pos.copy()
+                logger.debug(f"Squeeze pressed, storing reference position: {self.last_controller_pos}")
+            
+            # Calculate delta from last_controller_pos to current controller position
+            if self.last_controller_pos is not None:
+                delta = cur_ee_pos - self.last_controller_pos
+                # Apply delta to target end effector position
+                self.target_ee_pos = self.target_ee_pos + delta
+                logger.warning(f"Delta: {delta}, New target: {self.target_ee_pos}")
+                # Update last_controller_pos for next calculation
+                self.last_controller_pos = cur_ee_pos.copy()
+        else:
+            # When not squeezed, don't update the target position
+            if self.squeeze_pressed_prev:
+                logger.debug("Squeeze released, freezing target position")
+                
+        # Update squeeze state for next iteration
+        self.squeeze_pressed_prev = squeeze_pressed
+        
+        # Calculate IK based on the target position (not the raw controller position)
         qpos_arm, error_norm_pos, error_norm_rot = inverse_kinematics(
                 self.mjRobot.model, 
                 self.mjRobot.data, 
-                cur_ee_pos, 
+                self.target_ee_pos, 
                 target_ort=None, 
                 leftside=False,
             )
 
         logger.debug(f"IK: {qpos_arm}, {error_norm_pos}, {error_norm_rot}")
-        self.last_ee_pos = cur_ee_pos
+        
+        # Store the last end effector position
+        self.last_ee_pos = self.target_ee_pos.copy()
 
         qpos_full = self.mjRobot.convert_armqpos_to_fullqpos(qpos_arm, leftside=False)
-
         self.mjRobot.set_qpos(qpos_full)
 
         return qpos_arm
@@ -164,12 +203,14 @@ async def controller_task(controller, kos, rate=100):
         start_time = time.time()
         
         try:
-            # Get the current right controller position
+            # Get the current right controller position and buttons
             position = controller_states['right']['position']
+            buttons = controller_states['right']['buttons']
             
             if position is not None:
                 # Run the controller step and get new joint positions
-                qnew_pos = controller.step(position)
+                # Pass both position and buttons to the step function
+                qnew_pos = controller.step(position, buttons)
                 
                 # Send commands to the robot
                 await command_kbot(qnew_pos, kos)
