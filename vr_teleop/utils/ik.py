@@ -336,10 +336,14 @@ def ik_gradient(model, data, target_pos, target_ort, leftside: bool, initialstat
     jacr = np.zeros((3, model.nv))
     I = np.identity(model.nv)
     
+    start_time = time.time()
+
     # Setup state for Jacobian calculation
     data.qpos = full_pos
     mujoco.mj_forward(model, data)
     mujoco.mj_jac(model, data, jacp, jacr, ee_pos, model.body(ee_name).id)
+
+
     
     # Calculate position gradient
     A = jacp.T @ jacp + damping * I
@@ -350,9 +354,10 @@ def ik_gradient(model, data, target_pos, target_ort, leftside: bool, initialstat
         A_rot = jacr.T @ jacr + damping * I
         delta_q += rot_w * np.linalg.solve(A_rot, jacr.T @ error_rot)
     
-    # Extract only the arm joint gradients
-    # delta_q_arm = slice_dofs(model, data, delta_q, leftside)
-    # delta_q_arm = delta_q_arm.flatten()
-    
+    calc_time = time.time() - start_time
+    # logger.warning(f"Jacobian time: {calc_time * 1000:.4f} milliseconds")
+
+    logger.warning(f"Error: {error_norm_pos}")
+
     return delta_q, error_norm_pos, error_norm_rot
 

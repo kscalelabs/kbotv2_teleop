@@ -18,22 +18,16 @@ logger = setup_logger(__name__, logging.WARNING)
 
 # Shared state for controller positions
 controller_states = {
-    'left': {'position': np.array([0.01, 0.01, 0.01]), 'rotation': None, 'buttons': None, 'axes': None},
-    'right': {'position': np.array([0.01, 0.01, 0.01]), 'rotation': None, 'buttons': None, 'axes': None},
+    'left': {'position': np.array([-0.43841719, 0.14227997, 0.99074782]), 'rotation': None, 'buttons': None, 'axes': None},
+    'right': {'position': np.array([0.39237205, 0.16629315, 0.90654296]), 'rotation': None, 'buttons': None, 'axes': None},
     'updated': False
 }
 
 class Controller:
     def __init__(self, urdf_path="vr_teleop/kbot_urdf/scene.mjcf"):
         self.mjRobot = MJ_KBot(urdf_path)
-        self.last_ee_pos = np.array([0.01, 0.01, 0.01])
-
-        # Get initial robot position
-        rlocs = self.mjRobot.get_limit_center(leftside=False)
-        fullq = self.mjRobot.convert_armqpos_to_fullqpos(rlocs, leftside=False)
-        self.mjRobot.set_qpos(fullq)
+        self.last_ee_pos = np.array([0.39237205, 0.16629315, 0.90654296])
         
-        # For relative motion control
         self.target_ee_pos = self.last_ee_pos.copy()
         self.last_controller_pos = None
         self.squeeze_pressed_prev = False
@@ -58,9 +52,10 @@ class Controller:
             # Calculate delta from last_controller_pos to current controller position
             if self.last_controller_pos is not None:
                 delta = cur_ee_pos - self.last_controller_pos
+                delta[2] = -delta[2]
                 # Apply delta to target end effector position
-                self.target_ee_pos = self.target_ee_pos + delta
-                logger.warning(f"Delta: {delta}, New target: {self.target_ee_pos}")
+                self.target_ee_pos = self.target_ee_pos + delta*1.1
+                logger.warning(f"New target: {self.target_ee_pos}")
                 # Update last_controller_pos for next calculation
                 self.last_controller_pos = cur_ee_pos.copy()
         else:
@@ -71,6 +66,7 @@ class Controller:
         # Update squeeze state for next iteration
         self.squeeze_pressed_prev = squeeze_pressed
         
+        start_time = time.time()
         # Calculate IK based on the target position (not the raw controller position)
         full_delta_q, error_norm_pos, error_norm_rot = ik_gradient(
                 self.mjRobot.model, 
@@ -79,7 +75,8 @@ class Controller:
                 target_ort=None, 
                 leftside=False,
             )
-
+        ik_time = time.time() - start_time
+        logger.warning(f"IK time: {ik_time*1000:.1f}ms")
         
         # Store the last end effector position
         self.last_ee_pos = self.target_ee_pos.copy()
@@ -122,11 +119,11 @@ ACTUATORS = {
 async def command_kbot(qnew_pos, kos):
     # Create a direct mapping for right arm joints
     right_arm_mapping = {
-        21: 5*np.degrees(qnew_pos[0]),  # right_shoulder_pitch
-        22: 5*np.degrees(qnew_pos[1]),  # right_shoulder_roll
-        23: 5*np.degrees(qnew_pos[2]),  # right_shoulder_yaw
-        24: 5*np.degrees(qnew_pos[3]),  # right_elbow
-        25: 5*np.degrees(qnew_pos[4]),  # right_wrist
+        21: np.degrees(qnew_pos[0]),  # right_shoulder_pitch
+        22: np.degrees(qnew_pos[1]),  # right_shoulder_roll
+        23: np.degrees(qnew_pos[2]),  # right_shoulder_yaw
+        24: np.degrees(qnew_pos[3]),  # right_elbow
+        25: np.degrees(qnew_pos[4]),  # right_wrist
     }
 
     command = []
@@ -139,9 +136,9 @@ async def command_kbot(qnew_pos, kos):
     
     command_tasks = []
     
-    logger.debug(f"Commanding {command}")
     command_tasks.append(kos.actuator.command_actuators(command))
     await asyncio.gather(*command_tasks)
+    await asyncio.sleep(1)
 
 
 async def websocket_handler(websocket):
@@ -251,13 +248,57 @@ async def controller_task(controller, kos, rate=100):
             await asyncio.sleep(0)
 
 
+async def initialize_controller_and_robot(kos):
+    """Initialize the controller and move the robot to starting position."""
+    logger.info("Initializing controller and positioning robot")
+    
+    # Create controller
+    controller = Controller()
+    
+    # Extract both left and right arm joint positions
+    left_arm_qpos = controller.mjRobot.get_limit_center(leftside=True)
+    right_arm_qpos = controller.mjRobot.get_limit_center(leftside=False)
+
+    fullq = controller.mjRobot.convert_armqpos_to_fullqpos(leftarmq=left_arm_qpos, rightarmq=right_arm_qpos)
+    controller.mjRobot.set_qpos(fullq)
+    
+    # Create commands for both arms
+    command = []
+    
+    # Add left arm actuators (IDs 11-15)
+    for i, actuator_id in enumerate(range(11, 16)):
+        if actuator_id in ACTUATORS:
+            position_value = np.degrees(left_arm_qpos[i])
+
+            command.append({
+                "actuator_id": actuator_id,
+                "position": position_value,
+            })
+    
+    # Add right arm actuators (IDs 21-25)
+    for i, actuator_id in enumerate(range(21, 26)):
+        if actuator_id in ACTUATORS:
+            position_value = np.degrees(right_arm_qpos[i])
+            command.append({
+                "actuator_id": actuator_id,
+                "position": position_value,
+            })
+    
+    # Send commands directly to KOS
+    # logger.warning(f"Commanding {command}")
+    await asyncio.gather(*[kos.actuator.command_actuators(command)])
+    await asyncio.sleep(1)
+    
+    logger.warning("Robot initialized to starting position")
+
+    return controller
+
+
 async def main():
     """Start KOS and then run WebSocket server and controller task concurrently."""
     try:
         # Initialize KOS connection once
         async with KOS(ip="10.33.12.161", port=50051) as kos:
-            controller = Controller()
-            
             try:
                 # Configure actuators
                 enable_commands = []
@@ -273,6 +314,9 @@ async def main():
                 logger.warning(f"Enabling {enable_commands}")
                 await asyncio.gather(*enable_commands)
                 await asyncio.sleep(1)
+                
+                # Initialize the controller and position the robot in one step
+                controller = await initialize_controller_and_robot(kos)
                 
                 # Start the WebSocket server
                 server = await websockets.serve(websocket_handler, "localhost", 8586)
