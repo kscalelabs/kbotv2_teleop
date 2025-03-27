@@ -72,7 +72,7 @@ class Controller:
         self.squeeze_pressed_prev = squeeze_pressed
         
         # Calculate IK based on the target position (not the raw controller position)
-        full_delta_q, error_norm_pos, error_norm_rot = inverse_kinematics(
+        full_delta_q, error_norm_pos, error_norm_rot = ik_gradient(
                 self.mjRobot.model, 
                 self.mjRobot.data, 
                 self.target_ee_pos, 
@@ -89,9 +89,8 @@ class Controller:
         
         logger.debug(f"IK: {new_qpos}, {error_norm_pos}, {error_norm_rot}")
 
-        self.mjRobot.set_qpos()
+        self.mjRobot.set_qpos(new_qpos)
 
-        breakpoint()
 
         return new_qpos
 
