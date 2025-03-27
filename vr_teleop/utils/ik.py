@@ -198,7 +198,7 @@ def save_arm_positions_to_csv(arm_positions, error_norms, leftside, converged=Tr
     return filename
 
 def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
-    max_iteration = 10;
+    max_iteration = 80;
     tol = 0.05;
     step_size = 0.8
     damping = 0.2
@@ -298,20 +298,6 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         
         opt_total_time = time.time() - opt_start
         iter_total_time = time.time() - iter_start
-        
-        # Log timing only for the first iteration
-        if i == 3:
-            logger.warning(f"Iteration timing (ms):")
-            logger.warning(f"  Forward kinematics: {fk_time*1000:.2f}")
-            logger.warning(f"  Jacobian computation total: {jac_total_time*1000:.2f}")
-            logger.warning(f"    - Setting qpos: {mj_qpos_time*1000:.2f}")
-            logger.warning(f"    - mj_forward: {mj_forward_time*1000:.2f}")
-            logger.warning(f"    - mj_jac: {mj_jac_time*1000:.2f}")
-            logger.warning(f"  Optimization total: {opt_total_time*1000:.2f}")
-            logger.warning(f"    - Position optimization: {pos_opt_time*1000:.2f}")
-            logger.warning(f"    - Rotation optimization: {rot_opt_time*1000:.2f}")
-            logger.warning(f"    - Position update: {update_time*1000:.2f}")
-            logger.warning(f"  Full iteration time: {iter_total_time*1000:.2f}")
 
         if error_norm_pos < tol and error_norm_rot < tol:
             #* Converged Return
@@ -320,4 +306,67 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
     
     
     return next_pos_arm, error_norm_pos, error_norm_rot
+
+def ik_gradient(model, data, target_pos, target_ort, leftside: bool, initialstate=None, debug=False):
+    """
+    Calculate a single step gradient for inverse kinematics without iterating.
+    Returns the delta_q values that would be used to update joint positions.
+    """
+    damping = 0.2
+    rot_w = 1
+    trans_w = 1
+    
+    if initialstate is None:
+        if leftside:
+            initialstate = np.array([0.2617995, -0.5846855, 0.0, -1.2653635, 0.0])
+        else:
+            initialstate = np.array([-0.2617995, 0.5846855, 0.0, 1.2653635, 0.0])
+    
+    ee_name = "KB_C_501X_Bayonet_Adapter_Hard_Stop_2" if leftside else "KB_C_501X_Bayonet_Adapter_Hard_Stop"
+    
+    mujoco.mj_forward(model, data)
+    
+    # Set up initial state
+    pos_arm = initialstate.copy()
+    full_pos = arms_to_fullqpos(model, data, pos_arm.flatten(), leftside)
+    
+    # Calculate current end effector position and orientation
+    ee_pos, ee_rot = forward_kinematics(model, data, full_pos, leftside=leftside)
+    
+    # Calculate position error
+    error_pos = np.subtract(target_pos, ee_pos)
+    error_norm_pos = np.linalg.norm(error_pos)
+    
+    # Calculate orientation error if target orientation is provided
+    if target_ort is not None:
+        error_rot = orientation_error(target_ort, ee_rot)
+        error_norm_rot = np.linalg.norm(error_rot)
+    else:
+        error_rot = np.zeros(3)
+        error_norm_rot = 0
+    
+    # Set up Jacobian calculation
+    jacp = np.zeros((3, model.nv))
+    jacr = np.zeros((3, model.nv))
+    I = np.identity(model.nv)
+    
+    # Setup state for Jacobian calculation
+    data.qpos = full_pos
+    mujoco.mj_forward(model, data)
+    mujoco.mj_jac(model, data, jacp, jacr, ee_pos, model.body(ee_name).id)
+    
+    # Calculate position gradient
+    A = jacp.T @ jacp + damping * I
+    delta_q = trans_w * np.linalg.solve(A, jacp.T @ error_pos)
+    
+    # Add orientation gradient if needed
+    if target_ort is not None:
+        A_rot = jacr.T @ jacr + damping * I
+        delta_q += rot_w * np.linalg.solve(A_rot, jacr.T @ error_rot)
+    
+    # Extract only the arm joint gradients
+    # delta_q_arm = slice_dofs(model, data, delta_q, leftside)
+    # delta_q_arm = delta_q_arm.flatten()
+    
+    return delta_q, error_norm_pos, error_norm_rot
 
