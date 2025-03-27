@@ -33,8 +33,8 @@ def joint_limit_clamp(model, full_qpos):
                 joint_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, i) or f"joint_{i}"
                 logger.debug(f"Updated joint {joint_name} value from {prev_value:.6f} to {new_value:.6f}, limits: [{model.jnt_range[i][0]:.6f}, {model.jnt_range[i][1]:.6f}]")
                 if joint_name == "right_elbow_02":
-                    pass
-                    # logger.warning("elbowing was clamped")
+                    logger.warning("elbowing was clamped")
+                    # pass
                     # breakpoint()
     
     return full_qpos
@@ -222,7 +222,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
     
     next_pos_arm = initialstate.copy()
     next_pos = arms_to_fullqpos(model, data, next_pos_arm.flatten(), leftside)
-    
+
     I = np.identity(model.nv)
     
     for i in range(max_iteration):
@@ -234,6 +234,7 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
         ee_pos, ee_rot = forward_kinematics(model, data, next_pos, leftside=leftside)
         fk_time = time.time() - fk_start
         
+        logger.warning(f"EE pos: {ee_pos}, EE target pos: {target_pos}")
         error = np.subtract(target_pos, ee_pos)
         error_norm_pos = np.linalg.norm(error)
 
@@ -250,60 +251,45 @@ def inverse_kinematics(model, data, target_pos, target_ort, leftside: bool, init
             error_norms.append((error_norm_pos, error_norm_rot))
 
         #* Find Next Pos
-        # Time Jacobian calculation
-        jac_start = time.time()
         jacp = np.zeros((3, model.nv))
         jacr = np.zeros((3, model.nv))
 
-        # Time MuJoCo function calls separately
-        mj_qpos_start = time.time()
         data.qpos = next_pos
-        mj_qpos_time = time.time() - mj_qpos_start
         
-        mj_forward_start = time.time()
+        mj_fwd_time = time.time()
         mujoco.mj_forward(model, data)
-        mj_forward_time = time.time() - mj_forward_start
-        
-        mj_jac_start = time.time()
+        mj_fwd_time = time.time() - mj_fwd_time
+
+        mj_jac_time = time.time()
         mujoco.mj_jac(model, data, jacp, jacr, target_pos, model.body(ee_name).id)
-        mj_jac_time = time.time() - mj_jac_start
+        mj_jac_time = time.time() - mj_jac_time
+
+        solve_start = time.time()
         
-        jac_total_time = time.time() - jac_start
-        
-        # Time optimization step components
-        opt_start = time.time()
-        
-        # Time position optimization
-        pos_opt_start = time.time()
         A = jacp.T @ jacp + damping * I
         delta_q = trans_w * np.linalg.solve(A, jacp.T @ error)
-        pos_opt_time = time.time() - pos_opt_start
+        pos_solve_time = time.time() - solve_start
 
+        solve_start = time.time()
         # Time orientation optimization (if needed)
-        rot_opt_time = 0
         if target_ort is not None:
-            rot_opt_start = time.time()
             A_rot = jacr.T @ jacr + damping * I
             delta_q += rot_w * np.linalg.solve(A_rot, jacr.T @ error_rot)
-            rot_opt_time = time.time() - rot_opt_start
+
+        rot_solve_time = time.time() - solve_start
         
         # Time position update and joint limit enforcement
-        update_start = time.time()
         prev_pos = next_pos.copy()
         next_pos = prev_pos + delta_q * step_size
         next_pos = joint_limit_clamp(model, next_pos)
         next_pos_arm = slice_dofs(model, data, next_pos, leftside)
         next_pos_arm = next_pos_arm.flatten()
-        update_time = time.time() - update_start
-        
-        opt_total_time = time.time() - opt_start
-        iter_total_time = time.time() - iter_start
+
+        # logger.warning(f"MJ Fwd time: {mj_fwd_time * 1000:.2f} ms, MJ Jac time: {mj_jac_time * 1000:.2f} ms, Pos solve time: {pos_solve_time * 1000:.2f} ms, Rot solve time: {rot_solve_time * 1000:.2f} ms")
 
         if error_norm_pos < tol and error_norm_rot < tol:
             #* Converged Return
             return next_pos_arm, error_norm_pos, error_norm_rot
-    
-    
     
     return next_pos_arm, error_norm_pos, error_norm_rot
 
