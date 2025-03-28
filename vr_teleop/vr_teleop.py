@@ -10,8 +10,6 @@ import time
 
 from vr_teleop.utils.ik import *
 from vr_teleop.helpers.mjRobot import MJ_KBot
-from vr_teleop.utils.motion_planning import Robot_Planner
-from vr_teleop.helpers.kosRobot import KOS_KBot
 
 
 logger = setup_logger(__name__, logging.WARNING)
@@ -31,7 +29,6 @@ class Controller:
 
         self.right_target_ee_pos = self.right_last_ee_pos.copy()
         self.left_target_ee_pos = self.left_last_ee_pos.copy()
-        self.last_controller_pos = None
         self.squeeze_pressed_prev = False
 
     def step(self, cur_ee_pos, buttons=None):
@@ -48,14 +45,14 @@ class Controller:
         if squeeze_pressed:
             # If squeeze just got pressed, store current controller position
             if not self.squeeze_pressed_prev:
-                self.last_controller_pos = cur_ee_pos.copy()
-                logger.debug(f"Squeeze pressed, storing reference position: {self.last_controller_pos}")
+                self.right_last_ee_pos = cur_ee_pos.copy()
+                logger.debug(f"Squeeze pressed, storing reference position: {self.right_last_ee_pos}")
             
-            # Calculate delta from last_controller_pos to current controller position
-            if self.last_controller_pos is not None:
-                delta = cur_ee_pos - self.last_controller_pos
+            # Calculate delta from right_last_ee_pos to current controller position
+            if self.right_last_ee_pos is not None:
+                delta = cur_ee_pos - self.right_last_ee_pos
 
-                logger.warning(f"Controller: {self.last_controller_pos}")
+                logger.warning(f"Controller: {self.right_last_ee_pos}")
                 
                 #* Temp hack for sensitivity
                 delta[0] = 3*delta[0]
@@ -64,8 +61,8 @@ class Controller:
 
                 self.right_target_ee_pos = self.right_target_ee_pos + delta
                 logger.warning(f"New target: {self.right_target_ee_pos}")
-                # Update last_controller_pos for next calculation
-                self.last_controller_pos = cur_ee_pos.copy()
+                # Update right_last_ee_pos for next calculation
+                self.right_last_ee_pos = cur_ee_pos.copy()
         else:
             # When not squeezed, don't update the target position
             if self.squeeze_pressed_prev:
