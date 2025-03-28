@@ -2,5 +2,6 @@
 __pycache__
 *.DS_Store*
 .vscode
-MUJOCO_LOG.txt
+MUJOCO_LOG.TXT
 metadata.json
+venv/

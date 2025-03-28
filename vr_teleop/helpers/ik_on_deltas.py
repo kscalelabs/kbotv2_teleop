@@ -3,9 +3,9 @@ import mujoco
 import time
 import math
 import numpy as np
-from vr_teleop.mjRobot import MJ_KBot
+from vr_teleop.helpers.mjRobot import MJ_KBot
 from vr_teleop.utils.motion_planning import Robot_Planner
-from vr_teleop.kosRobot import KOS_KBot
+from vr_teleop.helpers.kosRobot import KOS_KBot
 from vr_teleop.utils.ik import *
 
 import asyncio

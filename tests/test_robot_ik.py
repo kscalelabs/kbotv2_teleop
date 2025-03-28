@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from vr_teleop.utils.ik import inverse_kinematics
-from vr_teleop.mjRobot import MJ_KBot
+from vr_teleop.helpers.mjRobot import MJ_KBot
 
 # Setup logger
 logger = logging.getLogger(__name__)

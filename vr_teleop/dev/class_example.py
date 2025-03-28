@@ -2,13 +2,13 @@ import asyncio
 import json
 import websockets
 from pykos import KOS
-from .utils.logging import setup_logger
+from ..utils.logging import setup_logger
 from scipy.spatial.transform import Rotation as R
 
 from vr_teleop.utils.ik import *
-from vr_teleop.mjRobot import MJ_KBot
+from vr_teleop.helpers.mjRobot import MJ_KBot
 from vr_teleop.utils.motion_planning import Robot_Planner
-from vr_teleop.kosRobot import KOS_KBot
+from vr_teleop.helpers.kosRobot import KOS_KBot
 
 
 logger = setup_logger(__name__, logging.INFO)

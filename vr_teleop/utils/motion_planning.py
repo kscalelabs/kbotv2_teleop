@@ -1,5 +1,5 @@
 import logging
-from vr_teleop.mjRobot import MJ_KBot
+from vr_teleop.helpers.mjRobot import MJ_KBot
 import mujoco
 import time
 import math

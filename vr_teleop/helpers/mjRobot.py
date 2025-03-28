@@ -231,37 +231,59 @@ class MJ_KBot(MuJoCo_Robot):
         
         return np.array(centered_positions)
 
-    def convert_armqpos_to_fullqpos(self, inputqloc: dict, leftside: bool):
-        moves = {}
-
+    def convert_armqpos_to_fullqpos(self, leftarmq=None, rightarmq=None):
+        """
+        Convert arm-specific joint positions to full qpos array.
+        Can handle left arm, right arm, or both arms simultaneously.
+        
+        Args:
+            leftarmq: Left arm joint positions (array or list of length 5) or None
+            rightarmq: Right arm joint positions (array or list of length 5) or None
+        
+        Returns:
+            Full qpos array updated with the specified arm joint values
+        """
         newqpos = self.data.qpos.copy()
-
-        if leftside:
-            moves = {
-                "left_shoulder_pitch_03": inputqloc[0],
-                "left_shoulder_roll_03": inputqloc[1],
-                "left_shoulder_yaw_02": inputqloc[2],
-                "left_elbow_02": inputqloc[3],
-                "left_wrist_02": inputqloc[4]
+        
+        # Process left arm if provided
+        if leftarmq is not None:
+            left_moves = {
+                "left_shoulder_pitch_03": leftarmq[0],
+                "left_shoulder_roll_03": leftarmq[1],
+                "left_shoulder_yaw_02": leftarmq[2],
+                "left_elbow_02": leftarmq[3],
+                "left_wrist_02": leftarmq[4]
             }
-        else:
-            moves = {
-                "right_shoulder_pitch_03": inputqloc[0],
-                "right_shoulder_roll_03": inputqloc[1],
-                "right_shoulder_yaw_02": inputqloc[2],
-                "right_elbow_02": inputqloc[3],
-                "right_wrist_02": inputqloc[4]
+            
+            for joint_name, value in left_moves.items():
+                joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+                if joint_id >= 0:
+                    qpos_index = self.model.jnt_qposadr[joint_id]
+                    if self.model.jnt_type[joint_id] != 3:  # 3 is for hinge joints (1 DOF)
+                        raise ValueError(f"Joint {joint_name} is not a hinge joint. This function only works with hinge joints (1 DOF).")
+                    newqpos[qpos_index] = value
+                else:
+                    self.logger.warning(f"Joint '{joint_name}' not found in model")
+        
+        # Process right arm if provided
+        if rightarmq is not None:
+            right_moves = {
+                "right_shoulder_pitch_03": rightarmq[0],
+                "right_shoulder_roll_03": rightarmq[1],
+                "right_shoulder_yaw_02": rightarmq[2],
+                "right_elbow_02": rightarmq[3],
+                "right_wrist_02": rightarmq[4]
             }
-
-        for key, value in moves.items():
-            joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, key)
-            qpos_index = self.model.jnt_qposadr[joint_id]
-
-            if self.model.jnt_type[joint_id] != 3:  # 3 is for hinge joints (1 DOF)
-                raise ValueError(f"Joint {key} is not a hinge joint. This function only works with hinge joints (1 DOF).")
-                return 
-            if joint_id >= 0:
-                newqpos[qpos_index] = value
+            
+            for joint_name, value in right_moves.items():
+                joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
+                if joint_id >= 0:
+                    qpos_index = self.model.jnt_qposadr[joint_id]
+                    if self.model.jnt_type[joint_id] != 3:  # 3 is for hinge joints (1 DOF)
+                        raise ValueError(f"Joint {joint_name} is not a hinge joint. This function only works with hinge joints (1 DOF).")
+                    newqpos[qpos_index] = value
+                else:
+                    self.logger.warning(f"Joint '{joint_name}' not found in model")
         
         return newqpos
 
