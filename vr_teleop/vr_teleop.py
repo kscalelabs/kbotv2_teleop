@@ -12,6 +12,7 @@ import os
 import pybullet as p
 import pybullet_data
 import xml.etree.ElementTree as ET  # For parsing URDF
+import argparse  # For command-line arguments
 
 # Replace MuJoCo imports with PyBullet imports
 from vr_teleop.utils.pb_ik import *
@@ -116,18 +117,24 @@ class Controller:
         # Check and display joint limits
         check_joint_limits(self.pbRobot, urdf_path)
         
-        # Adjust the initial end effector positions to account for the 1 meter vertical offset
-        self.right_last_ee_pos = np.array([0.39237205, 0.16629315, 0.90654296]) + np.array(self.robot_offset)
-        self.left_last_ee_pos = np.array([-0.43841719, 0.14227997, 0.99074782]) + np.array(self.robot_offset)
+        # Get current end effector positions
+        right_ee_pos, _ = self.pbRobot.get_ee_pos(leftside=False)
+        left_ee_pos, _ = self.pbRobot.get_ee_pos(leftside=True)
+        
+        # Store these as the last known positions
+        self.right_last_ee_pos = right_ee_pos.copy()
+        self.left_last_ee_pos = left_ee_pos.copy()
 
         # Initialize target positions - set right target 1 meter lower (at ground level)
         # This creates a noticeable distance for the IK to solve
-        self.right_target_ee_pos = np.array([0.39237205, 0.16629315, 0.90654296])  # No vertical offset for target
+        self.right_target_ee_pos = np.array([0.39237205, 0.16629315, 1.10654296])  # No vertical offset for target
         self.left_target_ee_pos = self.left_last_ee_pos.copy()
         self.squeeze_pressed_prev = False
         
-        logger.warning(f"Initial end effector position: {self.right_last_ee_pos}")
-        logger.warning(f"Initial target position: {self.right_target_ee_pos}")
+        logger.warning(f"Initial right end effector position: {self.right_last_ee_pos}")
+        logger.warning(f"Initial right target position: {self.right_target_ee_pos}")
+        logger.warning(f"Initial left end effector position: {self.left_last_ee_pos}")
+        logger.warning(f"Initial left target position: {self.left_target_ee_pos}")
         
         # Create visual markers for the target position and end effector
         if use_gui:
@@ -207,15 +214,29 @@ class Controller:
             if self.right_last_ee_pos is not None:
                 delta = cur_ee_pos - self.right_last_ee_pos
 
-                logger.warning(f"Controller: {self.right_last_ee_pos}")
+                logger.debug(f"Controller position: {cur_ee_pos}")
+                logger.debug(f"Reference position: {self.right_last_ee_pos}")
+                logger.debug(f"Raw delta: {delta}")
                 
                 #* Temp hack for sensitivity
-                delta[0] = 3*delta[0]
-                delta[1] = -3*delta[1]
-                delta[2] = -5*delta[2]
+                delta[0] = 1*delta[0]
+                delta[1] = -1*delta[1]
+                delta[2] = -1*delta[2]
+                
+                logger.debug(f"Scaled delta: {delta}")
 
+                # Get current end effector position
+                current_ee_pos, _ = self.pbRobot.get_ee_pos(leftside=False)
+                prev_target = self.right_target_ee_pos.copy()
+                
+                # Update target with delta
                 self.right_target_ee_pos = self.right_target_ee_pos + delta
+                
+                logger.warning(f"Current EE: {current_ee_pos}")
+                logger.warning(f"Previous target: {prev_target}")
                 logger.warning(f"New target: {self.right_target_ee_pos}")
+                logger.warning(f"Target delta: {self.right_target_ee_pos - prev_target}")
+                
                 # Update right_last_ee_pos for next calculation
                 self.right_last_ee_pos = cur_ee_pos.copy()
                 
@@ -235,6 +256,10 @@ class Controller:
         self.squeeze_pressed_prev = squeeze_pressed
         
         start_time = time.time()
+        
+        # Get current end effector position before IK
+        pre_ik_ee_pos, _ = self.pbRobot.get_ee_pos(leftside=False)
+        
         # Use the PyBullet IK solver with joint limits
         full_delta_q, error_norm_pos, error_norm_rot = ik_gradient(
                 self.pbRobot, 
@@ -243,11 +268,7 @@ class Controller:
                 leftside=False,
             )
         ik_time = time.time() - start_time
-        logger.debug(f"IK time: {ik_time*1000:.1f}ms")
         
-        # Store the last end effector position
-        self.last_right_ee_pos = self.right_target_ee_pos.copy()
-
         # Get current qpos
         current_qpos = np.zeros(len(self.pbRobot.joint_indices))
         for i, joint_idx in enumerate(self.pbRobot.joint_indices):
@@ -258,10 +279,23 @@ class Controller:
         # Apply joint limits explicitly
         new_qpos = joint_limit_clamp(self.pbRobot, new_qpos)
         
-        logger.debug(f"IK: {new_qpos}, {error_norm_pos}, {error_norm_rot}")
+        # Log detailed information about the IK solution
+        logger.debug(f"IK time: {ik_time*1000:.1f}ms")
+        logger.debug(f"Pre-IK EE position: {pre_ik_ee_pos}")
+        logger.debug(f"Target EE position: {self.right_target_ee_pos}")
+        logger.debug(f"Position error norm: {error_norm_pos}")
+        logger.debug(f"Rotation error norm: {error_norm_rot}")
+        logger.debug(f"Joint delta: {full_delta_q}")
+        logger.debug(f"New joint positions: {new_qpos}")
 
         # Update robot state
         self.pbRobot.set_qpos(new_qpos)
+        
+        # Get post-IK end effector position to report actual movement
+        post_ik_ee_pos, _ = self.pbRobot.get_ee_pos(leftside=False)
+        logger.debug(f"Post-IK EE position: {post_ik_ee_pos}")
+        logger.debug(f"Actual EE movement: {post_ik_ee_pos - pre_ik_ee_pos}")
+        logger.debug(f"Target vs actual position error: {np.linalg.norm(self.right_target_ee_pos - post_ik_ee_pos)}")
         
         # Update end effector visualization if enabled
         if hasattr(self, 'visual_markers'):
@@ -303,15 +337,15 @@ class Actuator:
 
 
 ACTUATORS = {
-    11: Actuator(11, 1, 150.0, 8.0, 60.0, True, "left_shoulder_pitch_03"),
+    11: Actuator(11, 1, 150.0, 8.0, 60.0, False, "left_shoulder_pitch_03"),
     12: Actuator(12, 5, 150.0, 8.0, 60.0, False, "left_shoulder_roll_03"),
     13: Actuator(13, 9, 50.0, 5.0, 17.0, False, "left_shoulder_yaw_02"),
     14: Actuator(14, 13, 50.0, 5.0, 17.0, False, "left_elbow_02"),
     15: Actuator(15, 17, 20.0, 2.0, 17.0, False, "left_wrist_02"),
     21: Actuator(21, 3, 150.0, 8.0, 60.0, False, "right_shoulder_pitch_03"),
-    22: Actuator(22, 7, 150.0, 8.0, 60.0, True, "right_shoulder_roll_03"),
-    23: Actuator(23, 11, 50.0, 2.0, 17.0, True, "right_shoulder_yaw_02"),
-    24: Actuator(24, 15, 50.0, 5.0, 17.0, True, "right_elbow_02"),
+    22: Actuator(22, 7, 150.0, 8.0, 60.0, False, "right_shoulder_roll_03"),
+    23: Actuator(23, 11, 50.0, 2.0, 17.0, False, "right_shoulder_yaw_02"),
+    24: Actuator(24, 15, 50.0, 5.0, 17.0, False, "right_elbow_02"),
     25: Actuator(25, 19, 20.0, 2.0, 17.0, False, "right_wrist_02"),
 }
 
@@ -320,7 +354,7 @@ async def command_kbot(qnew_pos, kos):
     # Create a direct mapping for right arm joints
     right_arm_mapping = {
         21: np.degrees(qnew_pos[0]),  # right_shoulder_pitch
-        22: np.degrees(qnew_pos[1]),  # right_shoulder_roll
+        22: -np.degrees(qnew_pos[1]),  # right_shoulder_roll
         23: np.degrees(qnew_pos[2]),  # right_shoulder_yaw
         24: np.degrees(qnew_pos[3]),  # right_elbow
         25: np.degrees(qnew_pos[4]),  # right_wrist
@@ -459,43 +493,268 @@ async def initialize_controller_and_robot(kos):
     fullq = controller.pbRobot.convert_armqpos_to_fullqpos(leftarmq=left_arm_qpos, rightarmq=right_arm_qpos)
     controller.pbRobot.set_qpos(fullq)
     
-    # Create commands for both arms
-    command = []
+    # Get current actuator states from the robot
+    actuator_ids = list(range(11, 16)) + list(range(21, 26))  # Left arm: 11-15, Right arm: 21-25
     
-    # Add left arm actuators (IDs 11-15)
+    try:
+        actuator_states = await kos.actuator.get_actuators_state(actuator_ids)
+        logger.warning(f"Current actuator states retrieved: {len(actuator_states.states)} actuators")
+        
+        # Create a dictionary to store current positions
+        current_positions = {}
+        for state in actuator_states.states:
+            current_positions[state.actuator_id] = state.position
+            logger.warning(f"Actuator {state.actuator_id} current position: {state.position}")
+    except Exception as e:
+        logger.error(f"Failed to get actuator states: {e}")
+        # Default to assuming zeros if we can't get current positions
+        current_positions = {aid: 0.0 for aid in actuator_ids}
+    
+    # Import motion planning function
+    from vr_teleop.utils.motion_planning_primitive import find_points_to_target
+    
+    # Define target positions in degrees
+    target_positions = {}
+    
+    # Calculate left arm target positions (in degrees)
     for i, actuator_id in enumerate(range(11, 16)):
         if actuator_id in ACTUATORS:
-            position_value = np.degrees(left_arm_qpos[i])
-
-            command.append({
-                "actuator_id": actuator_id,
-                "position": position_value,
-            })
+            target_positions[actuator_id] = np.degrees(left_arm_qpos[i])
     
-    # Add right arm actuators (IDs 21-25)
+    # Calculate right arm target positions (in degrees)
     for i, actuator_id in enumerate(range(21, 26)):
         if actuator_id in ACTUATORS:
-            position_value = np.degrees(right_arm_qpos[i])
-            command.append({
-                "actuator_id": actuator_id,
-                "position": position_value,
-            })
+            target_positions[actuator_id] = np.degrees(right_arm_qpos[i])
+
+    target_positions[22] = -target_positions[22]
+    target_positions[12] = -target_positions[12]
     
-    # Send commands directly to KOS
-    # logger.warning(f"Commanding {command}")
-    await asyncio.gather(*[kos.actuator.command_actuators(command)])
-    await asyncio.sleep(1)
+    # Generate trajectories for each actuator
+    trajectories = {}
+    for actuator_id in actuator_ids:
+        if actuator_id in ACTUATORS and actuator_id in current_positions and actuator_id in target_positions:
+            current_pos = current_positions[actuator_id]
+            target_pos = target_positions[actuator_id]
+            
+            # Skip if already at target position (within tolerance)
+            if abs(current_pos - target_pos) < 0.5:
+                logger.warning(f"Actuator {actuator_id} already at target position: {current_pos} vs {target_pos}")
+                continue
+                
+            # Generate trajectory with S-curve profile
+            trajectory_angles, _, trajectory_times = find_points_to_target(
+                current_angle=current_pos,
+                target=target_pos,
+                acceleration=50.0,  # Reduced acceleration for smoother motion
+                V_MAX=20.0,         # Reduced max velocity for safety
+                update_rate=50.0,   # 50Hz update rate
+                profile="scurve"    # Using S-curve for smooth acceleration
+            )
+            
+            trajectories[actuator_id] = {
+                "angles": trajectory_angles,
+                "times": trajectory_times,
+                "target": target_pos
+            }
+            
+            logger.warning(f"Generated trajectory for actuator {actuator_id}: {len(trajectory_angles)} points, duration: {trajectory_times[-1]:.2f}s")
+    
+    # Execute trajectories
+    if trajectories:
+        # Find the maximum trajectory duration
+        max_duration = max([traj["times"][-1] for traj in trajectories.values()])
+        logger.warning(f"Executing trajectories over {max_duration:.2f} seconds")
+        
+        # Execute trajectories by sending commands at each time step
+        start_time = time.time()
+        current_step = 0
+        
+        update_interval = 1.0 / 50.0  # 50Hz update rate
+        end_time = start_time + max_duration
+        
+        while time.time() < end_time:
+            current_time = time.time() - start_time
+            
+            # Prepare command for this time step
+            command = []
+            
+            for actuator_id, traj in trajectories.items():
+                # Find the nearest time point in the trajectory
+                next_idx = 0
+                while next_idx < len(traj["times"]) and traj["times"][next_idx] <= current_time:
+                    next_idx += 1
+                
+                # Use the trajectory point at or just before the current time
+                idx = max(0, next_idx - 1)
+                
+                if idx < len(traj["angles"]):
+                    angle = traj["angles"][idx]
+                else:
+                    angle = traj["target"]  # Use target if we're past the end of the trajectory
+                
+                # Add to command
+                command.append({
+                    "actuator_id": actuator_id,
+                    "position": angle,
+                })
+            
+            # Send commands to KOS if we have any
+            if command:
+                await kos.actuator.command_actuators(command)
+            
+            # Sleep until next update
+            elapsed = time.time() - (start_time + current_time)
+            sleep_time = max(0, update_interval - elapsed)
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
+    else:
+        # If no trajectories (all actuators at target positions), just send the target positions directly
+        logger.warning("No motion planning needed, sending target positions directly")
+        command = []
+        for actuator_id, target_pos in target_positions.items():
+            if actuator_id in ACTUATORS:
+                command.append({
+                    "actuator_id": actuator_id,
+                    "position": target_pos,
+                })
+        
+        if command:
+            await kos.actuator.command_actuators(command)
+            await asyncio.sleep(1)  # Wait for positions to be reached
     
     logger.warning("Robot initialized to starting position")
-
+    # breakpoint()
     return controller
+
+
+async def execute_motion_planning(kos, current_positions, target_positions):
+    """Execute motion planning from current positions to target positions."""
+    from vr_teleop.utils.motion_planning_primitive import find_points_to_target
+    
+    # Generate trajectories for each actuator
+    trajectories = {}
+    actuator_ids = list(current_positions.keys())
+    
+    for actuator_id in actuator_ids:
+        if actuator_id in ACTUATORS and actuator_id in current_positions and actuator_id in target_positions:
+            current_pos = current_positions[actuator_id]
+            target_pos = target_positions[actuator_id]
+            
+            # Skip if already at target position (within tolerance)
+            if abs(current_pos - target_pos) < 0.5:
+                logger.warning(f"Actuator {actuator_id} already at target position: {current_pos} vs {target_pos}")
+                continue
+                
+            # Generate trajectory with S-curve profile
+            trajectory_angles, _, trajectory_times = find_points_to_target(
+                current_angle=current_pos,
+                target=target_pos,
+                acceleration=50.0,  # Reduced acceleration for smoother motion
+                V_MAX=20.0,         # Reduced max velocity for safety
+                update_rate=50.0,   # 50Hz update rate
+                profile="scurve"    # Using S-curve for smooth acceleration
+            )
+            
+            trajectories[actuator_id] = {
+                "angles": trajectory_angles,
+                "times": trajectory_times,
+                "target": target_pos
+            }
+            
+            logger.warning(f"Generated trajectory for actuator {actuator_id}: {len(trajectory_angles)} points, duration: {trajectory_times[-1]:.2f}s")
+    
+    # Execute trajectories
+    if trajectories:
+        # Find the maximum trajectory duration
+        max_duration = max([traj["times"][-1] for traj in trajectories.values()])
+        logger.warning(f"Executing trajectories over {max_duration:.2f} seconds")
+        
+        # Execute trajectories by sending commands at each time step
+        start_time = time.time()
+        current_step = 0
+        
+        update_interval = 1.0 / 50.0  # 50Hz update rate
+        end_time = start_time + max_duration
+        
+        while time.time() < end_time:
+            current_time = time.time() - start_time
+            
+            # Prepare command for this time step
+            command = []
+            
+            for actuator_id, traj in trajectories.items():
+                # Find the nearest time point in the trajectory
+                next_idx = 0
+                while next_idx < len(traj["times"]) and traj["times"][next_idx] <= current_time:
+                    next_idx += 1
+                
+                # Use the trajectory point at or just before the current time
+                idx = max(0, next_idx - 1)
+                
+                if idx < len(traj["angles"]):
+                    angle = traj["angles"][idx]
+                else:
+                    angle = traj["target"]  # Use target if we're past the end of the trajectory
+                
+                # Add to command
+                command.append({
+                    "actuator_id": actuator_id,
+                    "position": angle,
+                })
+            
+            # Send commands to KOS if we have any
+            if command:
+                await kos.actuator.command_actuators(command)
+            
+            # Sleep until next update
+            elapsed = time.time() - (start_time + current_time)
+            sleep_time = max(0, update_interval - elapsed)
+            if sleep_time > 0:
+                await asyncio.sleep(sleep_time)
+            else:
+                await asyncio.sleep(0.001)  # Small sleep to prevent CPU hogging
+    else:
+        # If no trajectories (all actuators at target positions), just send the target positions directly
+        logger.warning("No motion planning needed, sending target positions directly")
+        command = []
+        for actuator_id, target_pos in target_positions.items():
+            if actuator_id in ACTUATORS:
+                command.append({
+                    "actuator_id": actuator_id,
+                    "position": target_pos,
+                })
+        
+        if command:
+            await kos.actuator.command_actuators(command)
+            await asyncio.sleep(1)  # Wait for positions to be reached
 
 
 async def main():
     """Start KOS and then run WebSocket server and controller task concurrently."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='VR Teleop for KBot')
+    parser.add_argument('--gui', action='store_true', help='Enable PyBullet GUI visualization mode regardless of DISPLAY setting')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
+    parser.add_argument('--kos-ip', type=str, default='10.33.11.154', help='KOS IP address')
+    parser.add_argument('--kos-port', type=int, default=50051, help='KOS port')
+    parser.add_argument('--ws-port', type=int, default=8586, help='WebSocket server port')
+    args = parser.parse_args()
+    
+    # Set environment variables based on arguments
+    if args.gui:
+        os.environ['DISPLAY'] = 'FORCED:0'
+        logger.warning("Forced GUI mode enabled by command-line argument")
+    
+    # Set log level based on arguments
+    if args.debug:
+        logger.setLevel(logging.DEBUG)
+        logger.warning("Debug logging enabled")
+    
     try:
         # Initialize KOS connection once
-        async with KOS(ip="10.33.11.6", port=50051) as kos:
+        async with KOS(ip=args.kos_ip, port=args.kos_port) as kos:
             try:
                 # await kos.sim.reset()
                 # await kos.sim.set_paused(True)
@@ -519,8 +778,8 @@ async def main():
                 controller = await initialize_controller_and_robot(kos)
                 
                 # Start the WebSocket server
-                server = await websockets.serve(websocket_handler, "localhost", 8586)
-                logger.info("WebSocket server started at ws://localhost:8586")
+                server = await websockets.serve(websocket_handler, "localhost", args.ws_port)
+                logger.info(f"WebSocket server started at ws://localhost:{args.ws_port}")
                 
                 # Start the controller task
                 control_task = asyncio.create_task(controller_task(controller, kos))
