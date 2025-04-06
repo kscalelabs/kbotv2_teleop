@@ -9,6 +9,8 @@ WebRTC portal: http://192.168.42.1:8083/pages/player/webrtc/s1/0
 import asyncio
 import logging
 import time
+import signal
+import sys
 
 import colorlogging
 import matplotlib.pyplot as plt
@@ -17,11 +19,37 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Global variable to store the teleop controller instance
+teleop_controller_instance = None
 
+async def disable_kbot_torque():
+    """Disable torque on all KBot actuators."""
+    if teleop_controller_instance and teleop_controller_instance.kbot_kos:
+        logger.warning("Disabling torque on KBot actuators...")
+        kbot_actuator_ids = [11, 12, 13, 14, 21, 22, 23, 24]
+        for actuator_id in kbot_actuator_ids:
+            try:
+                await teleop_controller_instance.kbot_kos.actuator.configure_actuator(
+                    actuator_id=actuator_id,
+                    kp=32.0,
+                    kd=32.0,
+                    zero_position=False,
+                    torque_enabled=False,
+                )
+                logger.info(f"Disabled torque on KBot actuator {actuator_id}")
+            except Exception as e:
+                logger.error(f"Failed to disable torque on KBot actuator {actuator_id}: {e}")
+
+def signal_handler(sig, frame):
+    """Handle Ctrl+C signal by disabling torque on KBot actuators."""
+    logger.warning("Ctrl+C detected. Disabling torque on KBot actuators...")
+    asyncio.run(disable_kbot_torque())
+    sys.exit(0)
 
 class TeleopController:
     def __init__(self, kos: pykos.KOS):
         self.kos = kos
+        self.kbot_kos = pykos.KOS("10.33.13.78")  # Initialize kbot_kos connection here
         self.logger = logging.getLogger(__name__)
         self.logger.warning("Starting test-00")
         self.counter = 0 
@@ -40,9 +68,9 @@ class TeleopController:
         }
         self.aidinv = {
             11: 1,  # left_shoulder_pitch_03
-            12: 1,  # left_shoulder_roll_03
+            12: -1,  # left_shoulder_roll_03
             13: 1,  # left_shoulder_yaw_02
-            14: 1,  # left_elbow_02
+            14: -1,  # left_elbow_02
             35: 1,  # left_wrist_roll_02
             21: 1,  # right_shoulder_pitch_03
             22: 1,  # right_shoulder_roll_03
@@ -128,6 +156,24 @@ class TeleopController:
                 torque_enabled=False,
             )
 
+            self.kbot_kos.connect()
+
+    async def configure_kbot_controller(self) -> None:
+        """Configure the KBot actuators with IDs 11-14 and 21-24 to enable torque."""
+        kbot_actuator_ids = [11, 12, 13, 14, 21, 22, 23, 24]
+        for actuator_id in kbot_actuator_ids:
+            self.logger.info(
+                "Configuring KBot actuator %d",
+                actuator_id,
+            )
+            await self.kbot_kos.actuator.configure_actuator(
+                actuator_id=actuator_id,
+                kp=20.0,
+                kd=2.0,
+                zero_position=False,
+                torque_enabled=True,
+            )
+
     async def log_actuator_states(self, states: Any) -> None:
         self.logger.info("Actuator states:")
         for actuator_state in states.states:
@@ -169,16 +215,64 @@ class TeleopController:
         return self.current_clipped_positions
 
     async def send_joint_positions(self) -> None:
-        kbot_kos = None  # pykos.KOS("10.33.87.40")
         commands = []
         for i, actuator_id in enumerate(self.actuator_ids):
+            # Map controller positions 35 and 45 to KBot positions 15 and 25
+            kbot_actuator_id = actuator_id
+            if actuator_id == 35:
+                kbot_actuator_id = 15  # Map left wrist roll from 35 to 15
+            elif actuator_id == 45:
+                kbot_actuator_id = 25  # Map right wrist roll from 45 to 25
+                
+            # Apply sign inversion based on aidinv mapping
+            position = self.current_states.states[i].position
+            if self.aidinv[actuator_id] == -1:
+                position = -position
+                
             commands.append(
-                pykos.ActuatorCommand(
-                    actuator_id=actuator_id,
-                    position=self.current_states.states[i].position,
-                )
+                {
+                    "actuator_id": kbot_actuator_id,
+                    "position": position,
+                }
             )
-        await kbot_kos.actuator.set_actuators_positions(commands)
+        await self.kbot_kos.actuator.command_actuators(commands)
+
+    async def get_kbot_positions(self) -> None:
+        """Get and log the current positions of the KBot actuators for debugging."""
+        try:
+            # Create a modified list of actuator IDs for KBot (15 and 25 instead of 35 and 45)
+            kbot_actuator_ids = []
+            for actuator_id in self.actuator_ids:
+                if actuator_id == 35:
+                    kbot_actuator_ids.append(15)  # Map left wrist roll from 35 to 15
+                elif actuator_id == 45:
+                    kbot_actuator_ids.append(25)  # Map right wrist roll from 45 to 25
+                else:
+                    kbot_actuator_ids.append(actuator_id)
+            
+            kbot_states = await self.kbot_kos.actuator.get_actuators_state(kbot_actuator_ids)
+            self.logger.info("KBot current positions:")
+            for actuator_state in kbot_states.states:
+                # Map KBot actuator IDs 15 and 25 back to controller IDs 35 and 45 for consistent logging
+                display_actuator_id = actuator_state.actuator_id
+                if actuator_state.actuator_id == 15:
+                    display_actuator_id = 35  # Map left wrist roll from 15 to 35
+                elif actuator_state.actuator_id == 25:
+                    display_actuator_id = 45  # Map right wrist roll from 25 to 45
+                
+                # Apply sign inversion based on aidinv mapping for display
+                position = actuator_state.position
+                if self.aidinv[display_actuator_id] == -1:
+                    position = -position
+                
+                self.logger.info(
+                    "actuator id %2d: %-25s pos: %6.2f",
+                    display_actuator_id,
+                    self.aidtoname[display_actuator_id],
+                    position,
+                )
+        except Exception as e:
+            self.logger.error(f"Failed to get KBot positions: {e}")
 
     # Function to measure number of calls per second
     async def run_teleop_controller(self) -> None:
@@ -192,6 +286,11 @@ class TeleopController:
             clipped_positions = await self.clip_current_positions()
             await self.log_positions(clipped=False)
             await self.log_positions(clipped=True)
+            
+            # Send joint positions to KBot and get current positions for debugging
+            await self.send_joint_positions()
+            await self.get_kbot_positions()
+            
             await asyncio.sleep(0.01)
 
 
@@ -199,17 +298,26 @@ async def main() -> None:
     colorlogging.configure()
     logger.warning("Starting teleop controller")
 
+    # Set up signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
+
     try:
-        async with pykos.KOS("10.33.87.40") as kos:
+        async with pykos.KOS("10.33.85.8") as kos:
+            global teleop_controller_instance
             teleop_controller = TeleopController(kos)
+            teleop_controller_instance = teleop_controller  # Store the instance globally
             # await teleop_controller.zero_joints()
             await teleop_controller.configure_controller()
+            await teleop_controller.configure_kbot_controller()
             await teleop_controller.run_teleop_controller()
     except Exception:
         logger.exception(
             "Make sure that the Z-Bot is connected over USB and the IP address is accessible."
         )
         raise
+    finally:
+        # Ensure torque is disabled even if an exception occurs
+        await disable_kbot_torque()
 
 
 # Run the performance test for 10 seconds
