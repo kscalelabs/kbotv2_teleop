@@ -87,6 +87,65 @@ def check_joint_limits(robot, urdf_path):
     except Exception as e:
         logger.error(f"Error checking joint limits: {e}")
 
+def check_joint_limits(robot, urdf_path):
+    """
+    Compare the joint limits loaded by PyBullet with those defined in the URDF file
+    """
+    logger.warning("Checking joint limits from URDF vs PyBullet...")
+    
+    # Parse the URDF file to extract joint limits
+    try:
+        tree = ET.parse(urdf_path)
+        root = tree.getroot()
+        
+        # Dictionary to store joint limits from URDF
+        urdf_limits = {}
+        
+        # Extract joint limits from URDF
+        for joint in root.findall(".//joint"):
+            joint_name = joint.get('name')
+            limit_elem = joint.find('limit')
+            
+            if limit_elem is not None:
+                lower = float(limit_elem.get('lower', '0'))
+                upper = float(limit_elem.get('upper', '0'))
+                urdf_limits[joint_name] = (lower, upper)
+        
+        # Compare with PyBullet's joint limits
+        for i in range(p.getNumJoints(robot.robot_id)):
+            joint_info = p.getJointInfo(robot.robot_id, i)
+            joint_name = joint_info[1].decode('utf-8')
+            joint_type = joint_info[2]
+            
+            # Skip fixed joints
+            if joint_type == p.JOINT_FIXED:
+                continue
+                
+            pb_lower = joint_info[8]
+            pb_upper = joint_info[9]
+            
+            if joint_name in urdf_limits:
+                urdf_lower, urdf_upper = urdf_limits[joint_name]
+                
+                # Check if limits match approximately
+                lower_match = abs(pb_lower - urdf_lower) < 1e-5
+                upper_match = abs(pb_upper - urdf_upper) < 1e-5
+                
+                status = "✓" if lower_match and upper_match else "✗"
+                
+                logger.warning(f"{status} Joint: {joint_name}")
+                logger.warning(f"  URDF limits: [{urdf_lower:.6f}, {urdf_upper:.6f}]")
+                logger.warning(f"  PyBullet limits: [{pb_lower:.6f}, {pb_upper:.6f}]")
+                
+                if not (lower_match and upper_match):
+                    logger.error(f"Joint limits mismatch for {joint_name}!")
+            else:
+                logger.warning(f"? Joint: {joint_name} - Not found in URDF or no limits defined")
+                logger.warning(f"  PyBullet limits: [{pb_lower:.6f}, {pb_upper:.6f}]")
+        
+    except Exception as e:
+        logger.error(f"Error checking joint limits: {e}")
+
 class Controller:
     def __init__(self, urdf_path="vr_teleop/kbot_urdf/robot.urdf"):
         # Check if DISPLAY is set to determine if we should use GUI mode
@@ -247,6 +306,14 @@ class Controller:
                         self.right_target_ee_pos, 
                         [0, 0, 0, 1]
                     )
+                
+                # Update target marker position if visualization is enabled
+                if hasattr(self, 'visual_markers') and 'target' in self.visual_markers:
+                    p.resetBasePositionAndOrientation(
+                        self.visual_markers['target'], 
+                        self.right_target_ee_pos, 
+                        [0, 0, 0, 1]
+                    )
         else:
             # When not squeezed, don't update the target position
             if self.squeeze_pressed_prev:
@@ -262,6 +329,7 @@ class Controller:
         
         # Use the PyBullet IK solver with joint limits
         full_delta_q, error_norm_pos, error_norm_rot = ik_gradient(
+                self.pbRobot, 
                 self.pbRobot, 
                 self.right_target_ee_pos, 
                 target_ort=None, 
@@ -483,12 +551,18 @@ async def initialize_controller_and_robot(kos):
     logger.info("Initializing controller and positioning robot")
     
     # Create controller with PyBullet
+    # Create controller with PyBullet
     controller = Controller()
     
     # Extract both left and right arm joint positions
     left_arm_qpos = controller.pbRobot.get_limit_center(leftside=True)
     right_arm_qpos = controller.pbRobot.get_limit_center(leftside=False)
+    left_arm_qpos = controller.pbRobot.get_limit_center(leftside=True)
+    right_arm_qpos = controller.pbRobot.get_limit_center(leftside=False)
 
+    # Set initial positions in PyBullet
+    fullq = controller.pbRobot.convert_armqpos_to_fullqpos(leftarmq=left_arm_qpos, rightarmq=right_arm_qpos)
+    controller.pbRobot.set_qpos(fullq)
     # Set initial positions in PyBullet
     fullq = controller.pbRobot.convert_armqpos_to_fullqpos(leftarmq=left_arm_qpos, rightarmq=right_arm_qpos)
     controller.pbRobot.set_qpos(fullq)
@@ -756,6 +830,9 @@ async def main():
         # Initialize KOS connection once
         async with KOS(ip=args.kos_ip, port=args.kos_port) as kos:
             try:
+                # await kos.sim.reset()
+                # await kos.sim.set_paused(True)
+
                 # await kos.sim.reset()
                 # await kos.sim.set_paused(True)
 
